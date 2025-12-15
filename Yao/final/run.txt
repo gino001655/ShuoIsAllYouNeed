@@ -1,0 +1,89 @@
+---- fine-tune depth-pro on prismlayerpro---
+1. 生成資料增強範例
+cd ml-depth-pro
+python custom_generate_augmentation_examples.py \
+    --data-dir ../parsed_dataset \
+    --output-dir ./augmentation_examples \
+    --num-examples 5
+---
+2. 小規模測試
+cd ml-depth-pro
+
+python custom_layer_order_train.py \
+    --data-dir ../parsed_dataset \
+    --checkpoint-path ./checkpoints/depth_pro.pt \
+    --batch-size 2 \
+    --num-epochs 5 \
+    --use-augmentation \
+    --use-amp
+--- 
+3. 正式訓練 (14GB VRAM)
+python custom_layer_order_train.py \
+    --data-dir ../parsed_dataset \
+    --checkpoint-path ./checkpoints/depth_pro.pt \
+    --batch-size 1 \
+    --grad-accum-steps 2 \
+    --use-grad-checkpointing \
+    --num-epochs 100 \
+    --encoder-lr 5e-6 \
+    --learning-rate 5e-5 \
+    --weight-decay 1e-4 \
+    --num-workers 4 \
+    --use-augmentation \
+    --horizontal-flip-prob 0.6 \
+    --vertical-flip-prob 0.6 \
+    --rotation-prob 0.6 \
+    --rotation-degrees 90 \
+    --color-jitter-prob 0.6 \
+    --color-jitter-brightness 0.2 \
+    --color-jitter-contrast 0.5 \
+    --color-jitter-saturation 0.5 \
+    --use-edge-loss \
+    --edge-loss-weight 0.1 \
+    --save-dir ./checkpoints/layer_order \
+    --use-amp \
+    --debug-nonfinite \
+    --debug-nonfinite-save
+
+---
+4. 讀取原始 Parquet（snapshots/*.parquet）訓練（data_dir 指向包含 snapshots/ 的資料夾）
+python custom_layer_order_train.py \
+    --data-dir ../dataset \
+    --use-parquet-format \
+    --checkpoint-path ./checkpoints/depth_pro.pt \
+    --batch-size 1 \
+    --grad-accum-steps 2 \
+    --use-grad-checkpointing \
+    --num-epochs 5 \
+    --encoder-lr 5e-6 \
+    --learning-rate 5e-5 \
+    --weight-decay 1e-4 \
+    --num-workers 4 \
+    --use-amp
+
+---
+跑 layer 深度預測
+./run_infer_parsed_dataset.sh -- --splits test --use-amp --skip-existing (7GB VRAM)
+
+
+---
+train RT-DETR with depth image
+
+python tools/train_layer.py \
+    --config configs/rtdetr/rtdetr_r50vd_layer_prediction.yml \
+    --pretrained-path /path/to/original/rtdetr_coco.pth
+
+
+---
+在 finetune過prismlayerpro的 depth-pro 的 checkpoint 上繼續finetune 在 助教給的dataset上面
+cd ml-depth-pro
+
+python custom_layer_order_train.py \
+    --data-dir ../processed_dlcv_dataset_gpu \
+    --checkpoint-path ./checkpoints/layer_order/experiment_20251213_143801/checkpoint_best.pt \
+    --batch-size 1 \
+    --grad-accum-steps 2 \
+    --use-grad-checkpointing \
+    --num-epochs 5 \
+    --use-augmentation \
+    --use-amp

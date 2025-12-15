@@ -1,0 +1,60 @@
+
+__include__: [
+  '../dataset/coco_detection.yml',
+  '../runtime.yml',
+  './include/dataloader.yml',
+  './include/optimizer.yml',
+  './include/rtdetr_r50vd.yml',
+]
+
+output_dir: ./output/rtdetr_r50vd_layer_prediction
+
+RTDETR: 
+  backbone: PResNet
+  encoder: HybridEncoder
+  decoder: RTDETRTransformer
+
+PResNet:
+  depth: 50
+  variant: d
+  freeze_norm: True
+  pretrained: False
+  input_channels: 4 
+
+RTDETRTransformer:
+  num_classes: 2
+
+SetCriterion:
+  weight_dict: {loss_vfl: 1, loss_bbox: 5, loss_giou: 2, loss_layer: 1.0}
+  losses: ['vfl', 'boxes', 'layers']
+
+train_dataloader: 
+  dataset: 
+    type: CocoLayerOrderDataset
+    img_folder: /tmp2/b12902041/Gino/DLCV_project/ShuoIsAllYouNeed/Yao/final/processed_dlcv_dataset/images/train
+    ann_file: /tmp2/b12902041/Gino/DLCV_project/ShuoIsAllYouNeed/Yao/final/processed_dlcv_dataset/annotations/train.json
+    depth_map_dir: /tmp2/b12902041/Gino/DLCV_project/ShuoIsAllYouNeed/Yao/final/processed_dlcv_dataset/depths/train
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: RandomHorizontalFlip}
+        - {type: Resize, size: [640, 640]}
+  shuffle: True
+  batch_size: 4
+  num_workers: 4
+
+val_dataloader:
+  dataset: 
+    type: CocoLayerOrderDataset
+    img_folder: /tmp2/b12902041/Gino/DLCV_project/ShuoIsAllYouNeed/Yao/final/processed_dlcv_dataset/images/val
+    ann_file: /tmp2/b12902041/Gino/DLCV_project/ShuoIsAllYouNeed/Yao/final/processed_dlcv_dataset/annotations/val.json
+    depth_map_dir: /tmp2/b12902041/Gino/DLCV_project/ShuoIsAllYouNeed/Yao/final/processed_dlcv_dataset/depths/val
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: Resize, size: [640, 640]}
+  shuffle: False
+  batch_size: 4
+  num_workers: 4
