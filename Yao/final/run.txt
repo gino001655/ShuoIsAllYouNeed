@@ -1,3 +1,6 @@
+---下載助教dataset
+pip install -U "huggingface_hub[cli]" && huggingface-cli download WalkerHsu/DLCV2025_final_project_piccollage --repo-type dataset --local-dir ./DLCV_dataset
+hf download WalkerHsu/DLCV2025_final_project_piccollage --repo-type dataset --local-dir ./DLCV_dataset
 ---- fine-tune depth-pro on prismlayerpro---
 1. 生成資料增強範例
 cd ml-depth-pro
@@ -69,9 +72,7 @@ python custom_layer_order_train.py \
 ---
 train RT-DETR with depth image
 
-python tools/train_layer.py \
-    --config configs/rtdetr/rtdetr_r50vd_layer_prediction.yml \
-    --pretrained-path /path/to/original/rtdetr_coco.pth
+python tools/train_layer.py -c configs/rtdetr/rtdetr_r50vd_layer_prediction.yml --pretrained-path weights/rtdetr_r50vd_6x_coco.pth
 
 
 ---
@@ -87,3 +88,22 @@ python custom_layer_order_train.py \
     --num-epochs 5 \
     --use-augmentation \
     --use-amp
+
+
+# 使用 GPU 版本進行前處理
+python tools/preprocess_dlcv_dataset_gpu.py \
+    --input-dir /tmp2/b12902041/Gino/TAData/DLCV_dataset/data \
+    --output-dir /tmp2/b12902041/Gino/preprocessed_data
+
+---
+測試修改過的RTDETR
+cd /tmp2/b12902041/Gino/ShuoIsAllYouNeed/Yao/final/RT-DETR/rtdetr_pytorch
+
+python tools/infer_layer.py \
+    -c configs/rtdetr/rtdetr_r50vd_layer_prediction.yml \
+    -r output/rtdetr_r50vd_layer_prediction/checkpoint0000.pth \
+    --rgb-file /tmp2/b12902041/Gino/preprocessed_data/images/val/00017535.png \
+    --depth-file /tmp2/b12902041/Gino/preprocessed_data/depths/val/00017535.png \
+    -o test_result.jpg \
+    -d cuda:0 \
+    -t 0.2

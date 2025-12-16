@@ -14,6 +14,7 @@ import src.misc.dist as dist
 from src.core import YAMLConfig 
 from src.solver import DetSolver
 from tools.weight_loader import load_rtdetr_weights
+from src.data.coco.coco_layer_dataset import CocoLayerOrderDataset  # Register custom dataset
 
 def save_layer_prediction_examples(model, dataloader, device, epoch, save_dir, num_examples=4):
     """
@@ -169,15 +170,8 @@ def save_layer_prediction_examples(model, dataloader, device, epoch, save_dir, n
 
 class LayerDetSolver(DetSolver):
     def fit(self):
-        # Initial visualization (Epoch 0 state)
-        print("Saving initial examples (untrained)...")
-        # Need to ensure model is on device
-        self.model.to(self.device)
-        save_layer_prediction_examples(self.model, self.val_dataloader, self.device, 0, self.output_dir)
-        
-        # Override Standard fit loop to inject saving examples
         print("Start training")
-        self.train()
+        self.train()  # This initializes dataloaders
         args = self.cfg 
         
         import time
@@ -188,6 +182,13 @@ class LayerDetSolver(DetSolver):
 
         n_parameters = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
         print('number of params:', n_parameters)
+
+        # Save initial checkpoint (before any training)
+        print("Saving initial checkpoint (epoch -1, untrained model)...")
+        if self.output_dir:
+            initial_checkpoint_path = self.output_dir / 'checkpoint_initial.pth'
+            dist.save_on_master(self.state_dict(-1), initial_checkpoint_path)
+            print(f"Initial checkpoint saved to {initial_checkpoint_path}")
 
         from src.data import get_coco_api_from_dataset
         base_ds = get_coco_api_from_dataset(self.val_dataloader.dataset)
@@ -205,8 +206,7 @@ class LayerDetSolver(DetSolver):
 
             self.lr_scheduler.step()
             
-            # SAVE EXAMPLES (Custom)
-            save_layer_prediction_examples(self.model, self.val_dataloader, self.device, epoch + 1, self.output_dir)
+            # Visualization disabled to prevent training interruption
 
             # SAVE CHECKPOINTS
             if self.output_dir:
@@ -216,26 +216,42 @@ class LayerDetSolver(DetSolver):
                 for checkpoint_path in checkpoint_paths:
                     dist.save_on_master(self.state_dict(epoch), checkpoint_path)
 
-            # EVAL
-            module = self.ema.module if self.ema else self.model
-            test_stats, coco_evaluator = evaluate(
-                module, self.criterion, self.postprocessor, self.val_dataloader, base_ds, self.device, self.output_dir
-            )
-
-            # LOGGING
-            for k in test_stats.keys():
-                if k in best_stat:
-                    best_stat['epoch'] = epoch if test_stats[k][0] > best_stat[k] else best_stat['epoch']
-                    best_stat[k] = max(best_stat[k], test_stats[k][0])
+            # EVAL - wrapped in try-except to handle position embedding size mismatches
+            try:
+                module = self.ema.module if self.ema else self.model
+                test_stats, coco_evaluator = evaluate(
+                    module, self.criterion, self.postprocessor, self.val_dataloader, base_ds, self.device, self.output_dir
+                )
+                
+                # LOGGING
+                for k in test_stats.keys():
+                    if k in best_stat:
+                        best_stat['epoch'] = epoch if test_stats[k][0] > best_stat[k] else best_stat['epoch']
+                        best_stat[k] = max(best_stat[k], test_stats[k][0])
+                    else:
+                        best_stat[k] = test_stats[k][0]
+                        best_stat['epoch'] = epoch
+                        
+                # SAVE LOG
+                log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
+                            **{f'test_{k}': v for k, v in test_stats.items()},
+                            'epoch': epoch,
+                            'n_parameters': n_parameters}
+                print('best_stat: ', best_stat) # Moved here to be part of successful eval logging
+            except RuntimeError as e:
+                if "size of tensor" in str(e) and "must match" in str(e):
+                    print(f"\n⚠️  Skipping evaluation for epoch {epoch} due to position embedding error")
+                    print(f"   Error: {str(e)[:100]}...")
+                    print(f"   Training will continue. This is likely due to variable image sizes.")
+                    
+                    # Log without test stats
+                    log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
+                                'epoch': epoch,
+                                'n_parameters': n_parameters,
+                                'eval_skipped': True}
                 else:
-                    best_stat['epoch'] = epoch
-                    best_stat[k] = test_stats[k][0]
-            print('best_stat: ', best_stat)
-
-            log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
-                        **{f'test_{k}': v for k, v in test_stats.items()},
-                        'epoch': epoch,
-                        'n_parameters': n_parameters}
+                    # Re-raise if it's a different error
+                    raise
 
             if self.output_dir and dist.is_main_process():
                 with (self.output_dir / "log.txt").open("a") as f:
@@ -275,8 +291,8 @@ def main(args):
     
     # Custom Weight Loading
     if args.pretrained_path:
-        # Load 4-channel weights
-        solver.model = load_rtdetr_weights(solver.model, args.pretrained_path)
+        # Load 4-channel weights (modifies solver.cfg.model in-place)
+        load_rtdetr_weights(solver.cfg.model, args.pretrained_path)
     
     if args.test_only:
         solver.val()

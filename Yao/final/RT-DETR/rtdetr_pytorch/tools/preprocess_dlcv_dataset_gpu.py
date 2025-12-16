@@ -287,6 +287,8 @@ def start_processing(input_dir, output_dir):
             coco_data[split]["annotations"].extend(valid_anns)
         
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             print(f"Error {idx}: {e}")
             continue
 
