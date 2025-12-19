@@ -1,6 +1,9 @@
 ---下載助教dataset
 pip install -U "huggingface_hub[cli]" && huggingface-cli download WalkerHsu/DLCV2025_final_project_piccollage --repo-type dataset --local-dir ./DLCV_dataset
 hf download WalkerHsu/DLCV2025_final_project_piccollage --repo-type dataset --local-dir ./DLCV_dataset
+---下載PrismlayersPro---
+hf download artplus/PrismLayersPro --include "data/*-00000-of-*" --local-dir ./PrismLayersPro --repo-type dataset
+
 ---- fine-tune depth-pro on prismlayerpro---
 1. 生成資料增強範例
 cd ml-depth-pro
