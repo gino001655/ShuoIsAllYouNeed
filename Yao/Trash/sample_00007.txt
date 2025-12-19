@@ -1,0 +1,5 @@
+Image: 00000006.png
+Path: /tmp2/b12902041/Gino/preprocessed_data/images/train/00000006.png
+
+Caption:
+The image features a person using a laptop computer, with a close-up of their hands typing on the keyboard. The laptop is placed on a wooden table. The background consists of a colorful watercolor-like pattern, which adds a vibrant and artistic touch to the scene. The main focus of the image is the person's hands and the laptop, emphasizing the action of typing and the interaction with the device.

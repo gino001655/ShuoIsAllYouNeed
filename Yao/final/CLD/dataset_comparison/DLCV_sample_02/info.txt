@@ -1,0 +1,20 @@
+Dataset: DLCV
+Sample Index: 2
+Caption: Cute Colourful Quote
+Image Size: 1008 x 1296
+Total Layers: 8
+
+Layer Structure:
+  Layer 0: Whole Image (完整圖片)
+  Layer 1: Base/Background (背景)
+  Layer 2+: Foreground Layers (前景圖層)
+
+Layout (Bounding Boxes):
+  Layer 0: [0, 0, 1007, 1295]
+  Layer 1: [0, 0, 1007, 1295]
+  Layer 2: [321, 306, 695, 516]
+  Layer 3: [318, 245, 689, 398]
+  Layer 4: [296, 648, 721, 1024]
+  Layer 5: [308, 509, 700, 625]
+  Layer 6: [295, 635, 710, 789]
+  Layer 7: [383, 503, 628, 649]

@@ -8,7 +8,7 @@ from io import StringIO
 # Set CUDA_VISIBLE_DEVICES before importing torch
 # You can modify this or set it via environment variable
 if "CUDA_VISIBLE_DEVICES" not in os.environ:
-    os.environ["CUDA_VISIBLE_DEVICES"] = "7"
+os.environ["CUDA_VISIBLE_DEVICES"] = "7"
 
 # Suppress verbose warnings and truncation messages
 os.environ["TRANSFORMERS_VERBOSITY"] = "error"
@@ -167,8 +167,23 @@ def train(config_path):
         lr_lambda=lambda step: 1.0
     )
 
-    dataset = LayoutTrainDataset(data_dir = config['data_dir'], split="train")
-    loader = DataLoader(dataset, batch_size=1, shuffle=True, num_workers=0, collate_fn=collate_fn)
+    # 嘗試使用 DLCVLayoutDataset（適用於 DLCV 格式數據，支持 caption mapping）
+    caption_mapping_path = config.get('caption_mapping', None)
+    try:
+        from tools.dlcv_dataset import DLCVLayoutDataset, collate_fn as dlcv_collate_fn
+        dataset = DLCVLayoutDataset(
+            data_dir=config['data_dir'],
+            split="train",
+            caption_mapping_path=caption_mapping_path
+        )
+        loader = DataLoader(dataset, batch_size=1, shuffle=True, num_workers=0, collate_fn=dlcv_collate_fn)
+        print(f"[INFO] 使用 DLCVLayoutDataset（DLCV 格式）", flush=True)
+        if caption_mapping_path:
+            print(f"[INFO] 使用 LLaVA 生成的 captions: {caption_mapping_path}", flush=True)
+    except Exception as e:
+        print(f"[INFO] DLCVLayoutDataset 失敗，回退到 LayoutTrainDataset: {e}", flush=True)
+        dataset = LayoutTrainDataset(data_dir = config['data_dir'], split="train")
+        loader = DataLoader(dataset, batch_size=1, shuffle=True, num_workers=0, collate_fn=collate_fn)
 
     max_steps = int(config.get("max_steps", 1000))
     log_every = int(config.get("log_every", 50))
@@ -177,10 +192,6 @@ def train(config_path):
     out_dir = config.get("output_dir", "./rf_lora_out")
     os.makedirs(out_dir, exist_ok=True)
     tb_writer = SummaryWriter(out_dir)
-    
-    # 用於計算平均 loss
-    total_loss = 0.0
-    loss_count = 0
 
     num_inference_steps = config.get("num_inference_steps", 28)
 
@@ -203,52 +214,9 @@ def train(config_path):
             pixel_RGB = pipeline.image_processor.preprocess(pixel_RGB[0])
             H = int(batch["height"][0])     # By default, only a single sample per batch is allowed (because later the data will be concatenated based on bounding boxes, which have varying lengths)
             W = int(batch["width"][0])
-            
-            # 調整為 16 的倍數（向上取整）- 因為 latent space 需要 /16
-            original_H = H
-            original_W = W
-            H = ((H + 15) // 16) * 16  # 向上取整到最近的 16 的倍數
-            W = ((W + 15) // 16) * 16  # 向上取整到最近的 16 的倍數
-            
-            if H != original_H or W != original_W:
-                if step == 0 or step % 10 == 0:
-                    print(f"[STEP {step}] 調整圖片尺寸: {original_W}x{original_H} -> {W}x{H} (必須是 16 的倍數)", flush=True)
-                
-                # Resize pixel_RGB 以匹配調整後的尺寸
-                # pixel_RGB shape: [L, C, original_H, original_W]
-                L, C, _, _ = pixel_RGB.shape
-                pixel_RGB = torch.nn.functional.interpolate(
-                    pixel_RGB, 
-                    size=(H, W), 
-                    mode='bilinear', 
-                    align_corners=False
-                )
-                if step == 0 or step % 10 == 0:
-                    print(f"[STEP {step}] Resized pixel_RGB from {original_H}x{original_W} to {H}x{W}", flush=True)
-            
             adapter_img = batch["whole_img"][0]
             caption = batch["caption"][0]
-            
-            # 計算尺寸調整比例
-            scale_h = H / original_H if original_H > 0 else 1.0
-            scale_w = W / original_W if original_W > 0 else 1.0
-            
-            # 調整 layout 座標以匹配調整後的尺寸
-            original_layout = batch["layout"][0]
-            adjusted_layout = []
-            for layer_box in original_layout:
-                # layer_box 格式: [x1, y1, x2, y2]
-                x1, y1, x2, y2 = layer_box
-                # 按比例調整座標（四捨五入以保持精度）
-                adjusted_x1 = round(x1 * scale_w)
-                adjusted_y1 = round(y1 * scale_h)
-                adjusted_x2 = round(x2 * scale_w)
-                adjusted_y2 = round(y2 * scale_h)
-                
-                adjusted_layout.append([adjusted_x1, adjusted_y1, adjusted_x2, adjusted_y2])
-            
-            # 使用調整後的 layout 計算 layer_boxes
-            layer_boxes = get_input_box(adjusted_layout)
+            layer_boxes = get_input_box(batch["layout"][0])
             
             if step == 0 or step % 10 == 0:
                 print(f"[STEP {step}] 數據載入完成 (尺寸: {W}x{H}, 圖層數: {len(layer_boxes)})", flush=True)
@@ -261,12 +229,12 @@ def train(config_path):
                     # Temporarily suppress stdout/stderr to catch truncation messages
                     f = StringIO()
                     with redirect_stdout(f), redirect_stderr(f):
-                        prompt_embeds, pooled_prompt_embeds, text_ids = pipeline.encode_prompt(
-                            prompt=caption,
-                            prompt_2=None,
-                            num_images_per_prompt=1,
-                            max_sequence_length=int(config.get("max_sequence_length", 512)),
-                        )
+                prompt_embeds, pooled_prompt_embeds, text_ids = pipeline.encode_prompt(
+                    prompt=caption,
+                    prompt_2=None,
+                    num_images_per_prompt=1,
+                    max_sequence_length=int(config.get("max_sequence_length", 512)),
+                )
                     
                     # Check if truncation occurred and show simplified message
                     output = f.getvalue()
@@ -383,14 +351,8 @@ def train(config_path):
 
             loss = loss / accum_steps
             
-            # 累積 loss 用於計算平均值
-            current_loss_value = loss.item() * accum_steps  # 恢復原始 loss 值
-            total_loss += current_loss_value
-            loss_count += 1
-            avg_loss = total_loss / loss_count
-            
             if step == 0 or step % 10 == 0:
-                print(f"[STEP {step}] Loss: {current_loss_value:.6f} | 平均 Loss: {avg_loss:.6f}，開始反向傳播...", flush=True)
+                print(f"[STEP {step}] Loss: {loss.item():.6f}，開始反向傳播...", flush=True)
             
             loss.float().backward()
             if (step + 1) % accum_steps == 0:
@@ -402,8 +364,7 @@ def train(config_path):
                 optimizer.zero_grad(set_to_none=True)
                 optimizer_adapter.zero_grad(set_to_none=True)
 
-                tb_writer.add_scalar("loss", current_loss_value, step)
-                tb_writer.add_scalar("avg_loss", avg_loss, step)
+                tb_writer.add_scalar("loss", loss.item(), step)
                 
                 if step == 0 or step % 10 == 0:
                     print(f"[STEP {step}] 權重更新完成！", flush=True)

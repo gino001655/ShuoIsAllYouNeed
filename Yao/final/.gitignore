@@ -73,5 +73,7 @@ refs/
 *.png
 *.webp
 *.gif
+*.json
+*.png
 
 

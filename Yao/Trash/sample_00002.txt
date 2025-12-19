@@ -1,0 +1,5 @@
+Image: 00000001.png
+Path: /tmp2/b12902041/Gino/preprocessed_data/images/train/00000001.png
+
+Caption:
+The image features a purple and gold background with a purple and gold border. The main focus is a purple and gold sign that says "We Create Marketing Future." The sign is positioned in the center of the image.

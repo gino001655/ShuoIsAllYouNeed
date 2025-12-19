@@ -1,0 +1,5 @@
+Image: 00000003.png
+Path: /tmp2/b12902041/Gino/preprocessed_data/images/train/00000003.png
+
+Caption:
+The image features a BBQ party advertisement with a variety of food items displayed. The advertisement is placed on a wooden table, and the food items include a hamburger, a hot dog, and a bowl of fries. The advertisement is promoting a BBQ party, and the text is written in a bold and eye-catching manner. The background of the image is a wooden table, which adds a rustic and inviting atmosphere to the advertisement.

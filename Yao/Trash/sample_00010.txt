@@ -1,0 +1,5 @@
+Image: 00000009.png
+Path: /tmp2/b12902041/Gino/preprocessed_data/images/train/00000009.png
+
+Caption:
+The image is a poster advertising a fashion show. The poster features a woman in a yellow shirt and black pants, standing in front of a white background. The woman is wearing a white jacket and is holding a white scarf. The poster is designed to attract attention and promote the fashion show.

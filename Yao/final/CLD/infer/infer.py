@@ -2,7 +2,7 @@ import os
 # Set CUDA_VISIBLE_DEVICES before importing torch
 # You can modify this or set it via environment variable
 if "CUDA_VISIBLE_DEVICES" not in os.environ:
-    os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 import numpy as np
 import torch
 import argparse
@@ -193,7 +193,7 @@ def inference_layout(config):
             dataset = LayoutTrainDataset(config['data_dir'], split="test")
     else:
         from tools.dataset import LayoutTrainDataset, collate_fn
-        dataset = LayoutTrainDataset(config['data_dir'], split="test")
+    dataset = LayoutTrainDataset(config['data_dir'], split="test")
     
     loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0, collate_fn=collate_fn)
 

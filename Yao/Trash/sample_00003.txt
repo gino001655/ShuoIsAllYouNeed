@@ -1,0 +1,5 @@
+Image: 00000002.png
+Path: /tmp2/b12902041/Gino/preprocessed_data/images/train/00000002.png
+
+Caption:
+The image features a woman with a pink lipstick smiling at the camera. The background is pink, and there are two flowers in the scene. The woman is the main subject, and the image is styled with a pink color scheme. The text on the image reads "Beauty," emphasizing the theme of the photo.

@@ -1,0 +1,5 @@
+Image: 00000000.png
+Path: /tmp2/b12902041/Gino/preprocessed_data/images/train/00000000.png
+
+Caption:
+The image is a colorful and vibrant painting of people celebrating. The subjects are variously colored and are reaching out to each other, creating a sense of unity and joy. The background features a festive atmosphere with confetti falling around the people, adding to the lively scene. The painting is likely a representation of a special event or gathering, where people come together to share happiness and create lasting memories.

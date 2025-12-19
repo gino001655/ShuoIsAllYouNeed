@@ -1,0 +1,5 @@
+Image: 00000005.png
+Path: /tmp2/b12902041/Gino/preprocessed_data/images/train/00000005.png
+
+Caption:
+The image features a restaurant advertisement with a delicious-looking meal displayed on a dining table. The meal consists of a chicken dish, possibly a roasted chicken, and a side of vegetables. The advertisement is promoting a special offer for Christmas, with a 15% discount on all menu items. The background of the image is white, which provides a clean and contrasting look for the advertisement.

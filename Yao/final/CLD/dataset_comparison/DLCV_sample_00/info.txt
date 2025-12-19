@@ -1,0 +1,21 @@
+Dataset: DLCV
+Sample Index: 0
+Caption: Colors Inspiration Frame on Colorful Blots
+Image Size: 1080 x 1080
+Total Layers: 9
+
+Layer Structure:
+  Layer 0: Whole Image (完整圖片)
+  Layer 1: Base/Background (背景)
+  Layer 2+: Foreground Layers (前景圖層)
+
+Layout (Bounding Boxes):
+  Layer 0: [0, 0, 1079, 1079]
+  Layer 1: [0, 0, 1079, 1079]
+  Layer 2: [52, 122, 1034, 950]
+  Layer 3: [214, 355, 865, 725]
+  Layer 4: [232, 374, 848, 705]
+  Layer 5: [470, 416, 609, 434]
+  Layer 6: [470, 647, 609, 665]
+  Layer 7: [273, 523, 793, 610]
+  Layer 8: [289, 460, 786, 528]

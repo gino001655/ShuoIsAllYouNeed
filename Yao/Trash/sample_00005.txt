@@ -1,0 +1,5 @@
+Image: 00000004.png
+Path: /tmp2/b12902041/Gino/preprocessed_data/images/train/00000004.png
+
+Caption:
+The image features a BBQ party advertisement with a wooden table as the main subject. The table is filled with various food items, including apples, oranges, and broccoli. The advertisement is displayed on a wooden background, and the text is written in a bold, white font. The overall style of the image is casual and inviting, promoting the upcoming BBQ party.

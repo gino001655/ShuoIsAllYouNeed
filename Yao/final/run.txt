@@ -125,3 +125,29 @@ python tools/convert_coco_to_cld.py \
     --output_dir /tmp2/b12902041/Gino/cld_dataset
 
 python tools/convert_coco_to_cld.py --input_dir /workspace/dataset/preprocessed_data --output_dir /workspace/dataset/cld_dataset
+
+---生成caption---
+cd /tmp2/b12902041/Gino/ShuoIsAllYouNeed/Yao/final/CLD
+
+conda activate llava15
+
+python generate_captions_for_training.py \
+    --data_dir /tmp2/b12902041/Gino/cld_dataset/snapshots/snapshot_1/data \
+    --output caption_mapping_test.json \
+    --max_samples 10
+
+python generate_captions_for_training.py \
+    --data_dir /tmp2/b12902041/Gino/cld_dataset/snapshots/snapshot_1/data \
+    --output caption_mapping_full.json
+
+cd /tmp2/b12902041/Gino/ShuoIsAllYouNeed/Yao/final/CLD
+
+conda activate llava
+
+# 方法：直接用 --prompt 参数
+python generate_captions_for_training.py \
+    --data_dir /tmp2/b12902041/Gino/cld_dataset/snapshots/snapshot_1/data \
+    --output caption_mapping_full.json \
+    --max_samples 10
+    --batch_size 8
+    --prompt "Precisely describe style, subjects, text, and especially the graphic design and background of the whole image in simple but detailed sentences."

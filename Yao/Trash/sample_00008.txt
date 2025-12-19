@@ -1,0 +1,5 @@
+Image: 00000007.png
+Path: /tmp2/b12902041/Gino/preprocessed_data/images/train/00000007.png
+
+Caption:
+The image features a group of people standing together, posing for a picture. They are holding up various flags, including American, Brazilian, and British flags. The group consists of at least six people, with some of them wearing glasses. The background of the image is blurry, likely to emphasize the focus on the people and their flags.

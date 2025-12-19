@@ -16,7 +16,8 @@ optimizer: Prodigy
 
 adapter_scale: 0.9
 
-data_dir: "Path_to_dataset"
+data_dir: "/tmp2/b12902041/Gino/cld_dataset/snapshots/snapshot_1"
+caption_mapping: "/tmp2/b12902041/Gino/ShuoIsAllYouNeed/Yao/final/CLD/caption_mapping_full.json"  # Optional: path to LLaVA-generated captions
 pretrained_model_name_or_path: "Path_to_pretrained_FLUX_model"
 pretrained_adapter_path: "Path_to_pretrained_FLUX_adapter"
 pretrained_lora_dir: "Path_to_pretrained_lora"

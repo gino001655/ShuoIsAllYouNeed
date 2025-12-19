@@ -1,0 +1,21 @@
+Dataset: DLCV
+Sample Index: 1
+Caption: Cute baby sleeping
+Image Size: 1920 x 1080
+Total Layers: 9
+
+Layer Structure:
+  Layer 0: Whole Image (完整圖片)
+  Layer 1: Base/Background (背景)
+  Layer 2+: Foreground Layers (前景圖層)
+
+Layout (Bounding Boxes):
+  Layer 0: [0, 0, 1919, 1079]
+  Layer 1: [0, 0, 1919, 1079]
+  Layer 2: [0, 76, 1842, 1006]
+  Layer 3: [1451, 75, 1774, 658]
+  Layer 4: [1634, 403, 1743, 523]
+  Layer 5: [1525, 418, 1685, 518]
+  Layer 6: [1321, 235, 1743, 329]
+  Layer 7: [1499, 429, 1504, 509]
+  Layer 8: [1593, 372, 1643, 375]
