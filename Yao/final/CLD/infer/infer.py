@@ -19,7 +19,7 @@ try:
     print("[INFO] 使用自訂資料集 (custom_dataset.py)")
 except ImportError:
     from tools.dataset import LayoutTrainDataset, collate_fn
-        print("[INFO] 使用原始資料集 (dataset.py)")
+    print("[INFO] 使用原始資料集 (dataset.py)")
 
 
 # Initialize pipeline
