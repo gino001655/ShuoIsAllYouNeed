@@ -17,12 +17,14 @@ from models.pipeline import CustomFluxPipeline, CustomFluxPipelineCfgLayer
 from models.transp_vae import AutoencoderKLTransformerTraining as CustomVAE
 from tools.tools import load_config, seed_everything
 # 嘗試載入自訂資料集，如果失敗則使用原始資料集
+_use_custom_dataset = False
 try:
-    from tools.custom_dataset import LayoutTrainDataset, collate_fn
-    print("[INFO] 使用自訂資料集 (custom_dataset.py)")
+    from tools.custom_dataset import LayoutTrainDataset as CustomLayoutTrainDataset, collate_fn as custom_collate_fn
+    _use_custom_dataset = True
+    print("[INFO] 自訂資料集模組載入成功，將嘗試使用 (custom_dataset.py)")
 except ImportError:
     from tools.dataset import LayoutTrainDataset, collate_fn
-    print("[INFO] 使用原始資料集 (dataset.py)")
+    print("[INFO] 自訂資料集模組不存在，使用原始資料集 (dataset.py)")
 
 
 # Initialize pipeline
@@ -176,7 +178,19 @@ def inference_layout(config):
 
     pipeline = initialize_pipeline(config)
 
-    dataset = LayoutTrainDataset(config['data_dir'], split="test")
+    # 嘗試載入 dataset，如果 custom_dataset 失敗則 fallback 到原始 dataset
+    if _use_custom_dataset:
+        try:
+            dataset = CustomLayoutTrainDataset(config['data_dir'], split="test")
+            collate_fn = custom_collate_fn
+            print("[INFO] 成功使用自訂資料集 (custom_dataset.py)", flush=True)
+        except (FileNotFoundError, ValueError) as e:
+            print(f"[WARNING] 自訂資料集載入失敗: {e}", flush=True)
+            print("[INFO] 切換到原始資料集 (dataset.py)", flush=True)
+            from tools.dataset import LayoutTrainDataset, collate_fn
+            dataset = LayoutTrainDataset(config['data_dir'], split="test")
+    else:
+        dataset = LayoutTrainDataset(config['data_dir'], split="test")
     loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0, collate_fn=collate_fn)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

@@ -45,7 +45,8 @@ class CustomLayoutDataset(Dataset):
             parquet_files = glob.glob(os.path.join(data_dir, "**/train-*.parquet"), recursive=True)
         
         if not parquet_files:
-            raise ValueError(f"無法在 {data_dir} 找到 Parquet 檔案")
+            # 如果找不到 DLCV 格式的檔案，讓調用者知道應該使用原始的 LayoutTrainDataset
+            raise FileNotFoundError(f"無法在 {data_dir} 找到 DLCV 格式的 Parquet 檔案。如果使用 PrismLayersPro 格式，請使用 tools.dataset.LayoutTrainDataset")
         
         print(f"找到 {len(parquet_files)} 個 Parquet 檔案")
         
