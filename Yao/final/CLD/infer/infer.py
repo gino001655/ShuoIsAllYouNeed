@@ -190,7 +190,9 @@ def inference_layout(config):
             from tools.dataset import LayoutTrainDataset, collate_fn
             dataset = LayoutTrainDataset(config['data_dir'], split="test")
     else:
-    dataset = LayoutTrainDataset(config['data_dir'], split="test")
+        from tools.dataset import LayoutTrainDataset, collate_fn
+        dataset = LayoutTrainDataset(config['data_dir'], split="test")
+    
     loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0, collate_fn=collate_fn)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
