@@ -199,9 +199,52 @@ def train(config_path):
             pixel_RGB = pipeline.image_processor.preprocess(pixel_RGB[0])
             H = int(batch["height"][0])     # By default, only a single sample per batch is allowed (because later the data will be concatenated based on bounding boxes, which have varying lengths)
             W = int(batch["width"][0])
+            
+            # 調整為 16 的倍數（向上取整）- 因為 latent space 需要 /16
+            original_H = H
+            original_W = W
+            H = ((H + 15) // 16) * 16  # 向上取整到最近的 16 的倍數
+            W = ((W + 15) // 16) * 16  # 向上取整到最近的 16 的倍數
+            
+            if H != original_H or W != original_W:
+                if step == 0 or step % 10 == 0:
+                    print(f"[STEP {step}] 調整圖片尺寸: {original_W}x{original_H} -> {W}x{H} (必須是 16 的倍數)", flush=True)
+                
+                # Resize pixel_RGB 以匹配調整後的尺寸
+                # pixel_RGB shape: [L, C, original_H, original_W]
+                L, C, _, _ = pixel_RGB.shape
+                pixel_RGB = torch.nn.functional.interpolate(
+                    pixel_RGB, 
+                    size=(H, W), 
+                    mode='bilinear', 
+                    align_corners=False
+                )
+                if step == 0 or step % 10 == 0:
+                    print(f"[STEP {step}] Resized pixel_RGB from {original_H}x{original_W} to {H}x{W}", flush=True)
+            
             adapter_img = batch["whole_img"][0]
             caption = batch["caption"][0]
-            layer_boxes = get_input_box(batch["layout"][0])
+            
+            # 計算尺寸調整比例
+            scale_h = H / original_H if original_H > 0 else 1.0
+            scale_w = W / original_W if original_W > 0 else 1.0
+            
+            # 調整 layout 座標以匹配調整後的尺寸
+            original_layout = batch["layout"][0]
+            adjusted_layout = []
+            for layer_box in original_layout:
+                # layer_box 格式: [x1, y1, x2, y2]
+                x1, y1, x2, y2 = layer_box
+                # 按比例調整座標（四捨五入以保持精度）
+                adjusted_x1 = round(x1 * scale_w)
+                adjusted_y1 = round(y1 * scale_h)
+                adjusted_x2 = round(x2 * scale_w)
+                adjusted_y2 = round(y2 * scale_h)
+                
+                adjusted_layout.append([adjusted_x1, adjusted_y1, adjusted_x2, adjusted_y2])
+            
+            # 使用調整後的 layout 計算 layer_boxes
+            layer_boxes = get_input_box(adjusted_layout)
             
             if step == 0 or step % 10 == 0:
                 print(f"[STEP {step}] 數據載入完成 (尺寸: {W}x{H}, 圖層數: {len(layer_boxes)})", flush=True)

@@ -145,10 +145,12 @@ def get_input_box(layer_boxes):
     for layer_box in layer_boxes:
         min_row, max_row = layer_box[1], layer_box[3]
         min_col, max_col = layer_box[0], layer_box[2]
+        # 向下取整到 16 的倍數
         quantized_min_row = (min_row // 16) * 16
         quantized_min_col = (min_col // 16) * 16
-        quantized_max_row = ((max_row // 16) + 1) * 16
-        quantized_max_col = ((max_col // 16) + 1) * 16
+        # 向上取整到 16 的倍數（正確的方式）
+        quantized_max_row = ((max_row + 15) // 16) * 16
+        quantized_max_col = ((max_col + 15) // 16) * 16
 
         list_layer_box.append((quantized_min_col, quantized_min_row, quantized_max_col, quantized_max_row))
     return list_layer_box
