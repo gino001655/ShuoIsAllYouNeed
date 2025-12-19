@@ -1,5 +1,8 @@
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+# Set CUDA_VISIBLE_DEVICES before importing torch
+# You can modify this or set it via environment variable
+if "CUDA_VISIBLE_DEVICES" not in os.environ:
+    os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 import numpy as np
 import torch
 import argparse
@@ -24,6 +27,14 @@ except ImportError:
 
 # Initialize pipeline
 def initialize_pipeline(config):
+    # Determine device based on CUDA availability
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"[INFO] Using device: {device}", flush=True)
+    if torch.cuda.is_available():
+        print(f"[INFO] CUDA available. GPU count: {torch.cuda.device_count()}, Current GPU: {torch.cuda.current_device()}, GPU name: {torch.cuda.get_device_name(0)}", flush=True)
+    else:
+        print("[WARNING] CUDA not available! Inference will run on CPU (very slow).", flush=True)
+    
     print("[INFO] Loading pretrained Transformer model...", flush=True)
     transformer_orig = FluxTransformer2DModel.from_pretrained(
         config.get('transformer_varient', config['pretrained_model_name_or_path']),
@@ -74,7 +85,8 @@ def initialize_pipeline(config):
     layer_pe_path = os.path.join(config['layer_ckpt'], "layer_pe.pth")
     if os.path.exists(layer_pe_path):
         print("[INFO] Loading layer_pe weights...", flush=True)
-        layer_pe = torch.load(layer_pe_path)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        layer_pe = torch.load(layer_pe_path, map_location=device)
         missing_keys, unexpected_keys = transformer.load_state_dict(layer_pe, strict=False)
         if unexpected_keys:
             print(f"[WARNING] Unexpected keys in layer_pe: {unexpected_keys}", flush=True)
@@ -84,7 +96,8 @@ def initialize_pipeline(config):
 
     # Load MultiLayer-Adapter
     print("[INFO] Loading MultiLayer-Adapter weights...", flush=True)
-    multiLayer_adapter = MultiLayerAdapter.from_pretrained(config['pretrained_adapter_path']).to(torch.bfloat16).to(torch.device("cuda"))
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    multiLayer_adapter = MultiLayerAdapter.from_pretrained(config['pretrained_adapter_path']).to(torch.bfloat16).to(device)
     print("[INFO] Successfully loaded MultiLayer-Adapter weights.", flush=True)
     if 'adapter_lora_dir' in config:
         print("[INFO] Loading MultiLayer-Adapter LoRA weights...", flush=True)
@@ -97,6 +110,7 @@ def initialize_pipeline(config):
 
     print("[INFO] Initializing CustomFluxPipeline...", flush=True)
     pipeline_type = CustomFluxPipelineCfgLayer
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     pipeline = pipeline_type.from_pretrained(
         config['pretrained_model_name_or_path'],
         transformer=transformer,
@@ -104,7 +118,7 @@ def initialize_pipeline(config):
         variant=config.get('variant', None),
         torch_dtype=torch.bfloat16,
         cache_dir=config.get('cache_dir', None),
-    ).to(torch.device("cuda"))
+    ).to(device)
     pipeline.set_multiLayerAdapter(multiLayer_adapter)
     print("[INFO] Successfully initialized CustomFluxPipeline.", flush=True)
 
@@ -149,12 +163,15 @@ def inference_layout(config):
     )
     transp_vae = CustomVAE(vae_args)
     transp_vae_path = config.get('transp_vae_path')
-    transp_vae_weights = torch.load(transp_vae_path, map_location=torch.device("cuda"))
+    # Determine device based on CUDA availability
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"[INFO] Loading Transparent VAE on device: {device}", flush=True)
+    transp_vae_weights = torch.load(transp_vae_path, map_location=device)
     missing_keys, unexpected_keys = transp_vae.load_state_dict(transp_vae_weights['model'], strict=False)
     if missing_keys or unexpected_keys:
         print(f"[WARNING] Missing keys: {missing_keys}, Unexpected keys: {unexpected_keys}")
     transp_vae.eval()
-    transp_vae = transp_vae.to(torch.device("cuda"))
+    transp_vae = transp_vae.to(device)
     print("[INFO] Transparent VAE loaded successfully.", flush=True)
 
     pipeline = initialize_pipeline(config)
@@ -162,7 +179,8 @@ def inference_layout(config):
     dataset = LayoutTrainDataset(config['data_dir'], split="test")
     loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0, collate_fn=collate_fn)
 
-    generator = torch.Generator(device=torch.device("cuda")).manual_seed(config['seed'])
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    generator = torch.Generator(device=device).manual_seed(config['seed'])
 
     idx = 0
     for batch in loader:
