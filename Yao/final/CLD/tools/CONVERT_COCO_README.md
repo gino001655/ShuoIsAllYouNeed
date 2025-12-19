@@ -260,3 +260,4 @@ python -m train.train -c train/train.yaml
 # 推論
 python -m infer.infer -c infer/infer.yaml
 ```
+

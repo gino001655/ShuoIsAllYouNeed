@@ -204,6 +204,16 @@ def inference_layout(config):
 
         height = int(batch["height"][0])
         width = int(batch["width"][0])
+        
+        # 調整為 8 的倍數（向上取整）
+        original_height = height
+        original_width = width
+        height = ((height + 7) // 8) * 8  # 向上取整到最近的 8 的倍數
+        width = ((width + 7) // 8) * 8     # 向上取整到最近的 8 的倍數
+        
+        if height != original_height or width != original_width:
+            print(f"[INFO] 調整圖片尺寸: {original_height}x{original_width} -> {height}x{width} (必須是 8 的倍數)", flush=True)
+        
         adapter_img = batch["whole_img"][0]
         caption = batch["caption"][0]
         layer_boxes = get_input_box(batch["layout"][0]) 
@@ -235,29 +245,46 @@ def inference_layout(config):
         # Save whole image_RGBA (X_hat[0]) and background_RGBA (X_hat[1])
         whole_image_layer = (x_hat[0].permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
         whole_image_rgba_image = Image.fromarray(whole_image_layer, "RGBA")
+        # Resize back to original size if needed
+        if height != original_height or width != original_width:
+            whole_image_rgba_image = whole_image_rgba_image.resize((original_width, original_height), Image.LANCZOS)
         whole_image_rgba_image.save(os.path.join(case_dir, "whole_image_rgba.png"))
 
         adapter_img.save(os.path.join(case_dir, "origin.png"))
 
         background_layer = (x_hat[1].permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
         background_rgba_image = Image.fromarray(background_layer, "RGBA")
+        # Resize back to original size if needed
+        if height != original_height or width != original_width:
+            background_rgba_image = background_rgba_image.resize((original_width, original_height), Image.LANCZOS)
         background_rgba_image.save(os.path.join(case_dir, "background_rgba.png"))
 
         x_hat = x_hat[2:]
         merged_image = image[1]
         image = image[2:]
+        
+        # Resize merged_image if needed (before compositing layers)
+        if height != original_height or width != original_width:
+            merged_image = merged_image.resize((original_width, original_height), Image.LANCZOS)
 
         # Save transparent VAE decoded results
         for layer_idx in range(x_hat.shape[0]):
             layer = x_hat[layer_idx]
             rgba_layer = (layer.permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
             rgba_image = Image.fromarray(rgba_layer, "RGBA")
+            # Resize back to original size if needed
+            if height != original_height or width != original_width:
+                rgba_image = rgba_image.resize((original_width, original_height), Image.LANCZOS)
             rgba_image.save(os.path.join(case_dir, f"layer_{layer_idx}_rgba.png"))
 
         # Composite background and foreground layers
         for layer_idx in range(x_hat.shape[0]):
-            rgba_layer = (x_hat[layer_idx].permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
+            layer = x_hat[layer_idx]
+            rgba_layer = (layer.permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
             layer_image = Image.fromarray(rgba_layer, "RGBA")
+            # Resize back to original size if needed
+            if height != original_height or width != original_width:
+                layer_image = layer_image.resize((original_width, original_height), Image.LANCZOS)
             merged_image = Image.alpha_composite(merged_image.convert('RGBA'), layer_image)
         
         # Save final composite images

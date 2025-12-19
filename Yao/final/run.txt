@@ -117,3 +117,11 @@ python tools/infer_layer.py \
     -o test_result.jpg \
     -d cuda:0 \
     -t 0.3
+
+-- 把preprocessed_data轉換成 parquet格式---
+cd /tmp2/b12902041/Gino/ShuoIsAllYouNeed/Yao/final/CLD
+python tools/convert_coco_to_cld.py \
+    --input_dir /tmp2/b12902041/Gino/preprocessed_data \
+    --output_dir /tmp2/b12902041/Gino/cld_dataset
+
+python tools/convert_coco_to_cld.py --input_dir /workspace/dataset/preprocessed_data --output_dir /workspace/dataset/cld_dataset
