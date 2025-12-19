@@ -1,0 +1,3 @@
+[submodule "Chang/main_repo"]
+	path = Chang/main_repo
+	url = https://github.com/Shermansdfh/dlcv-fall-2025-final-project.git
