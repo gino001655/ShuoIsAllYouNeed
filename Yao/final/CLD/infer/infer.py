@@ -18,8 +18,8 @@ try:
     from tools.custom_dataset import LayoutTrainDataset, collate_fn
     print("[INFO] 使用自訂資料集 (custom_dataset.py)")
 except ImportError:
-from tools.dataset import LayoutTrainDataset, collate_fn
-    print("[INFO] 使用原始資料集 (dataset.py)")
+    from tools.dataset import LayoutTrainDataset, collate_fn
+        print("[INFO] 使用原始資料集 (dataset.py)")
 
 
 # Initialize pipeline
