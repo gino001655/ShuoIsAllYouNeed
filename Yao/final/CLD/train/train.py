@@ -177,6 +177,10 @@ def train(config_path):
     out_dir = config.get("output_dir", "./rf_lora_out")
     os.makedirs(out_dir, exist_ok=True)
     tb_writer = SummaryWriter(out_dir)
+    
+    # 用於計算平均 loss
+    total_loss = 0.0
+    loss_count = 0
 
     num_inference_steps = config.get("num_inference_steps", 28)
 
@@ -379,8 +383,14 @@ def train(config_path):
 
             loss = loss / accum_steps
             
+            # 累積 loss 用於計算平均值
+            current_loss_value = loss.item() * accum_steps  # 恢復原始 loss 值
+            total_loss += current_loss_value
+            loss_count += 1
+            avg_loss = total_loss / loss_count
+            
             if step == 0 or step % 10 == 0:
-                print(f"[STEP {step}] Loss: {loss.item():.6f}，開始反向傳播...", flush=True)
+                print(f"[STEP {step}] Loss: {current_loss_value:.6f} | 平均 Loss: {avg_loss:.6f}，開始反向傳播...", flush=True)
             
             loss.float().backward()
             if (step + 1) % accum_steps == 0:
@@ -392,7 +402,8 @@ def train(config_path):
                 optimizer.zero_grad(set_to_none=True)
                 optimizer_adapter.zero_grad(set_to_none=True)
 
-                tb_writer.add_scalar("loss", loss.item(), step)
+                tb_writer.add_scalar("loss", current_loss_value, step)
+                tb_writer.add_scalar("avg_loss", avg_loss, step)
                 
                 if step == 0 or step % 10 == 0:
                     print(f"[STEP {step}] 權重更新完成！", flush=True)
