@@ -12,8 +12,10 @@ from models.pipeline import CustomFluxPipeline
 from models.multiLayer_adapter import MultiLayerAdapter
 
 def save_checkpoint(transformer, multiLayer_adater, optimizer, optimizer_adapter, scheduler, scheduler_adapter, step, save_dir):
-    trans_dir = os.path.join(save_dir, "transformer")
-    adapter_dir = os.path.join(save_dir, "adapter")
+    # Create step-specific checkpoint directory
+    ckpt_dir = os.path.join(save_dir, f"checkpoint_{step:06d}")
+    trans_dir = os.path.join(ckpt_dir, "transformer")
+    adapter_dir = os.path.join(ckpt_dir, "adapter")
     os.makedirs(trans_dir, exist_ok=True)
     os.makedirs(adapter_dir, exist_ok=True)
 
@@ -34,7 +36,7 @@ def save_checkpoint(transformer, multiLayer_adater, optimizer, optimizer_adapter
         safe_serialization=True,
     )
 
-    torch.save({"layer_pe": transformer.layer_pe.detach().cpu().to(torch.float32)}, os.path.join(save_dir, "layer_pe.pth"))
+    torch.save({"layer_pe": transformer.layer_pe.detach().cpu().to(torch.float32)}, os.path.join(ckpt_dir, "layer_pe.pth"))
 
     torch.save(optimizer.state_dict(), os.path.join(trans_dir, "optimizer.bin"))
     torch.save(optimizer_adapter.state_dict(), os.path.join(adapter_dir, "optimizer.bin"))
@@ -42,7 +44,7 @@ def save_checkpoint(transformer, multiLayer_adater, optimizer, optimizer_adapter
     torch.save(scheduler.state_dict(), os.path.join(trans_dir, "scheduler.bin"))
     torch.save(scheduler_adapter.state_dict(), os.path.join(adapter_dir, "scheduler.bin"))
 
-    save_path = os.path.join(save_dir, f"random_states_0.pkl")
+    save_path = os.path.join(ckpt_dir, f"random_states_0.pkl")
     state = {
         "step": step,
         "random_state": random.getstate(),
@@ -56,6 +58,7 @@ def save_checkpoint(transformer, multiLayer_adater, optimizer, optimizer_adapter
     with open(save_path, "wb") as f:
         pickle.dump(state, f)
 
+    print(f"[INFO] Saved checkpoint at step {step} to {ckpt_dir}")
     print(f"[INFO] Saved RNG states + step {step} to {save_path}")
     
 
