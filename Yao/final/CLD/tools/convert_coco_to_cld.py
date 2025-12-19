@@ -20,6 +20,7 @@ from typing import Dict, List, Tuple, Any
 import pandas as pd
 from PIL import Image
 import numpy as np
+from tqdm import tqdm
 
 def validate_bbox(bbox: List[float], img_width: int, img_height: int) -> Tuple[int, int, int, int]:
     """
@@ -124,12 +125,33 @@ def process_coco_to_cld(
         if image_id in image_dict:
             image_to_anns[image_id].append(ann)
     
-    print(f"[INFO] 找到 {len(image_to_anns)} 張有註解的圖片")
+    print(f"[INFO] 找到 {len(image_to_anns)} 張有註解的圖片", flush=True)
     
     # 處理每張圖片
     records = []
     errors = []
     warnings = []
+    
+    # 添加進度條
+    print(f"[INFO] 開始處理 {len(image_dict)} 張圖片...", flush=True)
+    print(f"[INFO] 圖片目錄: {os.path.join(images_dir, split_name)}", flush=True)
+    
+    # 測試第一張圖片的路徑是否正確
+    if len(image_dict) > 0:
+        first_img_id = list(image_dict.keys())[0]
+        first_img_info = image_dict[first_img_id]
+        test_path = os.path.join(images_dir, split_name, first_img_info['file_name'])
+        print(f"[INFO] 測試第一張圖片路徑: {test_path}", flush=True)
+        print(f"[INFO] 檔案是否存在: {os.path.exists(test_path)}", flush=True)
+    
+    try:
+        pbar = tqdm(total=len(image_dict), desc=f"處理 {split_name} split", unit="張", mininterval=1.0)
+    except Exception as e:
+        print(f"[WARNING] 無法建立進度條: {e}，將使用簡單輸出", flush=True)
+        pbar = None
+    
+    processed_count = 0
+    print(f"[INFO] 開始循環處理...", flush=True)
     
     for img_id, img_info in image_dict.items():
         try:
@@ -159,23 +181,40 @@ def process_coco_to_cld(
             
             # 驗證圖片檔案是否存在
             img_path = os.path.join(images_dir, split_name, img_info['file_name'])
-            if not os.path.exists(img_path):
+            
+            # 檢查檔案是否存在（這可能很慢，如果檔案系統慢）
+            # 使用 try-except 避免檔案系統問題導致卡住
+            try:
+                file_exists = os.path.exists(img_path)
+            except Exception as e:
+                errors.append(f"檢查圖片檔案時發生錯誤: {img_path}, {e}")
+                if pbar:
+                    pbar.update(1)
+                processed_count += 1
+                continue
+            
+            if not file_exists:
                 errors.append(f"圖片檔案不存在: {img_path}")
+                if pbar:
+                    pbar.update(1)
+                processed_count += 1
                 continue
             
             # 驗證圖片尺寸（可選：實際讀取圖片驗證）
-            try:
-                with Image.open(img_path) as img:
-                    actual_width, actual_height = img.size
-                    if actual_width != img_width or actual_height != img_height:
-                        warnings.append(
-                            f"圖片 {img_id} 尺寸不匹配: "
-                            f"JSON 說 {img_width}x{img_height}, 實際 {actual_width}x{actual_height}"
-                        )
-                        # 使用實際尺寸
-                        img_width, img_height = actual_width, actual_height
-            except Exception as e:
-                warnings.append(f"無法讀取圖片 {img_path}: {e}")
+            # 注意：讀取圖片會很慢，可以跳過以加快速度
+            # 如果需要驗證，可以取消下面的註解
+            # try:
+            #     with Image.open(img_path) as img:
+            #         actual_width, actual_height = img.size
+            #         if actual_width != img_width or actual_height != img_height:
+            #             warnings.append(
+            #                 f"圖片 {img_id} 尺寸不匹配: "
+            #                 f"JSON 說 {img_width}x{img_height}, 實際 {actual_width}x{actual_height}"
+            #             )
+            #             # 使用實際尺寸
+            #             img_width, img_height = actual_width, actual_height
+            # except Exception as e:
+            #     warnings.append(f"無法讀取圖片 {img_path}: {e}")
             
             # 轉換 bbox 格式並建立列表
             left_list = []
@@ -231,6 +270,26 @@ def process_coco_to_cld(
             errors.append(f"處理圖片 {img_id} 時發生錯誤: {e}")
             import traceback
             traceback.print_exc()
+        
+        # 更新進度條
+        processed_count += 1
+        if pbar:
+            pbar.update(1)
+            # 每處理 1000 張圖片輸出一次進度
+            if processed_count % 1000 == 0:
+                pbar.set_postfix({
+                    "成功": len(records),
+                    "錯誤": len(errors),
+                    "警告": len(warnings)
+                })
+        else:
+            # 沒有進度條時，每 1000 張輸出一次
+            if processed_count % 1000 == 0:
+                print(f"[INFO] 已處理 {processed_count}/{len(image_dict)} 張圖片 (成功: {len(records)}, 錯誤: {len(errors)}, 警告: {len(warnings)})", flush=True)
+    
+    if pbar:
+        pbar.close()
+    print(f"[INFO] 圖片處理完成，共處理 {processed_count} 張", flush=True)
     
     # 輸出統計資訊
     print(f"\n[INFO] 轉換完成統計:")
@@ -276,8 +335,9 @@ def process_coco_to_cld(
                 f"{split_name}-{shard_idx:05d}-of-{num_shards:05d}.parquet"
             )
         
+        print(f"[INFO] 正在儲存 shard {shard_idx + 1}/{num_shards} ({len(shard_records)} 筆)...", flush=True)
         df.to_parquet(parquet_path, index=False, engine='pyarrow')
-        print(f"[INFO] 儲存 shard {shard_idx + 1}/{num_shards}: {parquet_path} ({len(shard_records)} 筆)")
+        print(f"[INFO] 儲存完成: {parquet_path}", flush=True)
 
 def main():
     """主函數"""
