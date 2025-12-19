@@ -1,5 +1,7 @@
 import numpy as np
 import torch
+import os
+import glob
 from PIL import Image
 from torch.utils.data import Dataset
 from datasets import load_dataset, concatenate_datasets
@@ -24,11 +26,42 @@ def collate_fn(batch):
 
 class LayoutTrainDataset(Dataset):
     def __init__(self, data_dir, split="train"):
-        full_dataset = load_dataset(
-            "artplus/PrismLayersPro",
-            cache_dir=data_dir,
-        )
-        full_dataset = concatenate_datasets(list(full_dataset.values()))
+        """
+        Dataset loader for PrismLayersPro.
+
+        Supported `data_dir` formats:
+        1) HuggingFace datasets cache directory (original behavior):
+           - We will call `load_dataset("artplus/PrismLayersPro", cache_dir=data_dir)`
+        2) Local parquet shards directory (Method A):
+           - Expect files under:  {data_dir}/data/*.parquet
+           - Each file is typically a style shard, e.g. "anime-00000-of-00007.parquet".
+           - We will load each parquet file and concatenate them into one dataset.
+        """
+
+        local_parquet_dir = os.path.join(data_dir, "data")
+        local_parquet_files = sorted(glob.glob(os.path.join(local_parquet_dir, "*.parquet")))
+
+        if len(local_parquet_files) > 0:
+            # Load local parquet shards directly (no internet needed).
+            datasets_list = []
+            for pf in local_parquet_files:
+                style = os.path.basename(pf).split("-000")[0]
+                ds = load_dataset("parquet", data_files=pf)["train"]
+
+                # Some local exports may not contain `style_category`; add it from filename.
+                if "style_category" not in ds.column_names:
+                    ds = ds.add_column("style_category", [style] * len(ds))
+
+                datasets_list.append(ds)
+
+            full_dataset = concatenate_datasets(datasets_list)
+        else:
+            # Fallback to HuggingFace dataset (may download if cache missing).
+            full_dataset = load_dataset(
+                "artplus/PrismLayersPro",
+                cache_dir=data_dir,
+            )
+            full_dataset = concatenate_datasets(list(full_dataset.values()))
 
         if "style_category" not in full_dataset.column_names:
             raise ValueError("Dataset must contain a 'style_category' field to split by class.")
