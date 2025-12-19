@@ -9,4 +9,4 @@ pretrained_lora_dir: "ckpt/pre_trained_LoRA"
 lora_ckpt: "Path_to_save_training_ckpt/transformer"
 layer_ckpt: "Path_to_save_training_ckpt"
 adapter_lora_dir: "Path_to_save_training_ckpt/adapter"
-save_dir: "Path_to_save_results"t
+save_dir: "Path_to_save_results"
