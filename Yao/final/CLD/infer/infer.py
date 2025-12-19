@@ -205,14 +205,14 @@ def inference_layout(config):
         height = int(batch["height"][0])
         width = int(batch["width"][0])
         
-        # 調整為 8 的倍數（向上取整）
+        # 調整為 16 的倍數（向上取整）- 因為 latent space 需要 /16
         original_height = height
         original_width = width
-        height = ((height + 7) // 8) * 8  # 向上取整到最近的 8 的倍數
-        width = ((width + 7) // 8) * 8     # 向上取整到最近的 8 的倍數
+        height = ((height + 15) // 16) * 16  # 向上取整到最近的 16 的倍數
+        width = ((width + 15) // 16) * 16     # 向上取整到最近的 16 的倍數
         
         if height != original_height or width != original_width:
-            print(f"[INFO] 調整圖片尺寸: {original_height}x{original_width} -> {height}x{width} (必須是 8 的倍數)", flush=True)
+            print(f"[INFO] 調整圖片尺寸: {original_height}x{original_width} -> {height}x{width} (必須是 16 的倍數)", flush=True)
         
         adapter_img = batch["whole_img"][0]
         caption = batch["caption"][0]
@@ -227,11 +227,12 @@ def inference_layout(config):
         for layer_box in original_layout:
             # layer_box 格式: [x1, y1, x2, y2]
             x1, y1, x2, y2 = layer_box
-            # 按比例調整座標
-            adjusted_x1 = int(x1 * scale_w)
-            adjusted_y1 = int(y1 * scale_h)
-            adjusted_x2 = int(x2 * scale_w)
-            adjusted_y2 = int(y2 * scale_h)
+            # 按比例調整座標（四捨五入以保持精度）
+            adjusted_x1 = round(x1 * scale_w)
+            adjusted_y1 = round(y1 * scale_h)
+            adjusted_x2 = round(x2 * scale_w)
+            adjusted_y2 = round(y2 * scale_h)
+            
             adjusted_layout.append([adjusted_x1, adjusted_y1, adjusted_x2, adjusted_y2])
         
         # 使用調整後的 layout 計算 layer_boxes
