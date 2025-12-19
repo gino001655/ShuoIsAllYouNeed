@@ -1,27 +1,277 @@
-import os, random
-import warnings
-import logging
-import sys
-from contextlib import redirect_stdout, redirect_stderr
-from io import StringIO
+import os
+import random
+import yaml
+import math
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple
 
+import torch
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+import torchvision.transforms as T
+
+# Reuse UAE's namespace package by adding sibling path at runtime
+_HERE = os.path.dirname(__file__)
+_CLD2_ROOT = os.path.abspath(os.path.join(_HERE, ".."))
+_UAE_ROOT = os.path.abspath(os.path.join(_CLD2_ROOT, "..", "UAE"))
+if _UAE_ROOT not in os.sys.path:
+    os.sys.path.insert(0, _UAE_ROOT)
+
+from tools.dataset import LayoutTrainDataset, collate_fn  # noqa: E402
+from tools.tools import (  # noqa: E402
+    seed_everything,
+    build_layer_mask,
+    get_input_box,
+    encode_target_latents,
+    get_timesteps_sd3,
+    set_sdpa_kernel,
+)
+from models.sd3_backbone import SD3Backbone  # noqa: E402
+from models.qwen_projector import QwenProjector  # noqa: E402
+from models.image_conditioning import ImageConditioning  # noqa: E402
+
+
+def load_config(path: str) -> Dict[str, Any]:
+    with open(path, "r") as f:
+        return yaml.safe_load(f)
+
+
+def preprocess_pixel_rgb(pixel_rgb: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
+    """
+    Input:  pixel_rgb in [0,1], shape [L,3,H,W] or [B,L,3,H,W]
+    Output: normalized to [-1,1]
+    """
+    if pixel_rgb.dim() == 4:
+        x = pixel_rgb
+    else:
+        x = pixel_rgb[0]
+    x = x.to(dtype=dtype)
+    x = x.clamp(0, 1) * 2.0 - 1.0
+    return x
+
+
+def maybe_subsample_layers(
+    pixel_rgb_lchw: torch.Tensor,
+    layout: List[List[int]],
+    max_layers_per_step: int,
+) -> Tuple[torch.Tensor, List[List[int]]]:
+    """
+    Keep layer 0 (whole) and 1 (background) always. Subsample foreground layers if needed.
+    """
+    if max_layers_per_step is None or max_layers_per_step <= 0:
+        return pixel_rgb_lchw, layout
+
+    L = pixel_rgb_lchw.shape[0]
+    if L <= 2:
+        return pixel_rgb_lchw, layout
+
+    # foreground indices: [2..L-1]
+    fg_indices = list(range(2, L))
+    keep_fg = min(max_layers_per_step, len(fg_indices))
+    chosen = sorted(random.sample(fg_indices, keep_fg))
+
+    keep = [0, 1] + chosen
+    pixel_rgb_lchw = pixel_rgb_lchw[keep]
+    layout = [layout[i] for i in keep]
+    return pixel_rgb_lchw, layout
+
+
+def train(config_path: str):
+    cfg = load_config(config_path)
+    seed_everything(int(cfg.get("seed", 42)))
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    if bool(cfg.get("enable_tf32", True)) and torch.cuda.is_available():
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+        try:
+            torch.set_float32_matmul_precision("high")
+        except Exception:
+            pass
+
+    mp = (cfg.get("mixed_precision") or "bf16").lower()
+    if mp == "bf16":
+        dtype = torch.bfloat16
+    elif mp == "fp16":
+        dtype = torch.float16
+    else:
+        dtype = torch.float32
+
+    set_sdpa_kernel(cfg.get("sdpa_kernel", "auto"))
+
+    # Models
+    sd3 = SD3Backbone(
+        sd3_model_path=cfg["sd3_model_path"],
+        dit_path=cfg["dit_path"],
+        dit_lora_path=cfg.get("dit_lora_path"),
+        device=device,
+        dtype=dtype,
+        gradient_checkpointing=bool(cfg.get("gradient_checkpointing", True)),
+        max_layer_num=int(cfg.get("max_layer_num", 64)),
+    )
+
+    if bool(cfg.get("torch_compile", False)) and hasattr(torch, "compile"):
+        try:
+            sd3.transformer = torch.compile(sd3.transformer)  # type: ignore[attr-defined]
+        except Exception:
+            pass
+
+    qwen = QwenProjector(
+        llm_path=cfg["llm_path"],
+        llm_processor_path=cfg["llm_processor_path"],
+        llm_lora_path=cfg.get("llm_lora_path"),
+        load_in_4bit=bool(cfg.get("llm_load_in_4bit", False)),
+        attn_implementation=str(cfg.get("llm_attn_implementation", "sdpa")),
+        device=device,
+        dtype=dtype,
+        gradient_checkpointing=bool(cfg.get("gradient_checkpointing", True)),
+    )
+
+    img_cond = ImageConditioning(enabled=bool(cfg.get("use_image_conditioning", False)))
+    to_tensor = T.ToTensor()
+
+    # Dataset
+    dataset = LayoutTrainDataset(cfg["data_dir"], split=str(cfg.get("split", "train")))
+    loader = DataLoader(dataset, batch_size=1, shuffle=True, num_workers=0, collate_fn=collate_fn)
+
+    # Trainable params: LoRA on SD3 + layer embedding
+    params = sd3.get_trainable_params()
+    optimizer = torch.optim.AdamW(params, lr=float(cfg.get("lr", 1e-4)), weight_decay=float(cfg.get("weight_decay", 1e-3)))
+
+    max_steps = int(cfg.get("max_steps", 1000))
+    log_every = int(cfg.get("log_every", 50))
+    save_every = int(cfg.get("save_every", 200))
+    accum_steps = int(cfg.get("accum_steps", 1))
+    grad_clip = float(cfg.get("grad_clip", 1.0))
+
+    out_dir = cfg.get("output_dir", "./cld2_out")
+    os.makedirs(out_dir, exist_ok=True)
+
+    num_inference_steps = int(cfg.get("num_inference_steps", 28))
+    max_layers_per_step = int(cfg.get("max_layers_per_step", 0))
+
+    step = 0
+    pbar = tqdm(total=max_steps, desc="train")
+    optimizer.zero_grad(set_to_none=True)
+
+    while step < max_steps:
+        for batch in loader:
+            if step >= max_steps:
+                break
+
+            H = int(batch["height"][0])
+            W = int(batch["width"][0])
+            caption = batch["caption"][0]
+            layout = batch["layout"][0]
+            adapter_img = batch["whole_img"][0]
+
+            pixel_rgb = preprocess_pixel_rgb(batch["pixel_RGB"].to(device=device), dtype=dtype)  # [L,3,H,W]
+            pixel_rgb, layout = maybe_subsample_layers(pixel_rgb, layout, max_layers_per_step=max_layers_per_step)
+
+            # Quantize boxes to align with model grid
+            layer_boxes = get_input_box(layout)
+
+            # Text embeddings (UAE projector)
+            with torch.no_grad():
+                prompt_embeds = qwen.caption_to_prompt_embeds(caption)  # [1, seq, 4096]
+                pooled_prompt_embeds = sd3.pooled_prompt_embeds  # [1, pooled_dim]
+
+            # Encode targets to latents per layer
+            x0 = encode_target_latents(sd3.vae, pixel_rgb.unsqueeze(0), dtype=dtype)  # [1,L,C,H_lat,W_lat]
+            bs, L, C_lat, H_lat, W_lat = x0.shape
+
+            # Layer embedding (Phase-1): add layer id embedding in latent space
+            x0 = sd3.add_layer_embedding(x0)
+
+            x1 = torch.randn_like(x0)
+
+            # Timesteps (use SD3 scheduler to sample t; normalize for RF mix)
+            timesteps = get_timesteps_sd3(sd3.scheduler, H_lat, W_lat, num_inference_steps=num_inference_steps, device=device)
+            t = timesteps[random.randint(0, len(timesteps) - 1)]
+            t_batch = t.expand(bs).to(dtype=torch.float32)
+            t_norm = (t_batch / 1000.0).to(dtype=dtype).view(bs, 1, 1, 1, 1)
+
+            xt = (1.0 - t_norm) * x0 + t_norm * x1
+            v_star = x1 - x0
+
+            # Optional image conditioning (Phase-1 minimal): add masked whole-image latent residuals
+            if img_cond.enabled:
+                whole_bchw = to_tensor(adapter_img).unsqueeze(0).to(device=device, dtype=dtype)  # [1,3,H,W] in [0,1]
+                whole_bchw = whole_bchw.clamp(0, 1) * 2.0 - 1.0
+                residual = img_cond.build_residual(
+                    vae=sd3.vae,
+                    whole_img_bchw=whole_bchw,
+                    list_layer_box=layer_boxes,
+                    n_layers=L,
+                    dtype=dtype,
+                    device=device,
+                    scale=float(cfg.get("image_conditioning_scale", 0.5)),
+                )
+                xt = xt + residual
+
+            # bbox mask in latent space
+            mask = build_layer_mask(L, H_lat, W_lat, layer_boxes).to(device=device, dtype=dtype)  # [L,1,H_lat,W_lat]
+            mask = mask.unsqueeze(0)  # [1,L,1,H_lat,W_lat]
+
+            # Phase-1: flatten layers into batch dimension
+            xt_flat = xt.view(bs * L, C_lat, H_lat, W_lat)
+            v_star_flat = v_star.view(bs * L, C_lat, H_lat, W_lat)
+            mask_flat = mask.view(bs * L, 1, H_lat, W_lat)
+
+            # repeat text cond per layer
+            prompt_flat = prompt_embeds.repeat_interleave(L, dim=0).to(device=device, dtype=dtype)
+            pooled_flat = pooled_prompt_embeds.repeat_interleave(L, dim=0).to(device=device, dtype=dtype)
+
+            # SD3 transformer expects raw timesteps (not normalized)
+            t_model = t.expand(bs * L).to(device=device)
+
+            v_pred_flat = sd3.denoise(
+                latents=xt_flat,
+                timestep=t_model,
+                prompt_embeds=prompt_flat,
+                pooled_prompt_embeds=pooled_flat,
+            )  # [bs*L,C_lat,H_lat,W_lat]
+
+            mse = (v_pred_flat - v_star_flat) ** 2
+            mse = mse.mean(dim=1, keepdim=True)  # [bs*L,1,H,W]
+            loss = (mse * mask_flat).sum() / (mask_flat.sum() + 1e-8)
+
+            (loss / accum_steps).backward()
+
+            if (step + 1) % accum_steps == 0:
+                torch.nn.utils.clip_grad_norm_(params, max_norm=grad_clip)
+                optimizer.step()
+                optimizer.zero_grad(set_to_none=True)
+
+            if step % log_every == 0:
+                pbar.set_postfix(loss=float(loss.detach().cpu()))
+            if (step + 1) % log_every == 0:
+                pbar.update(log_every)
+
+            if (step + 1) % save_every == 0:
+                sd3.save_lora_and_layer_embed(out_dir, step + 1)
+
+            step += 1
+
+    pbar.close()
+    sd3.save_lora_and_layer_embed(out_dir, step)
+    print("[DONE] CLD2 training finished.")
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-c", "--config_path", type=str, required=True)
+    args = parser.parse_args()
+    train(args.config_path)
+
+import os, random
 # Set CUDA_VISIBLE_DEVICES before importing torch
 # You can modify this or set it via environment variable
 if "CUDA_VISIBLE_DEVICES" not in os.environ:
     os.environ["CUDA_VISIBLE_DEVICES"] = "7"
-
-# Suppress verbose warnings and truncation messages
-os.environ["TRANSFORMERS_VERBOSITY"] = "error"
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
-warnings.filterwarnings("ignore", category=UserWarning)
-warnings.filterwarnings("ignore", message=".*truncated.*")
-warnings.filterwarnings("ignore", message=".*CLIP.*")
-
-# Suppress PIL and diffusers verbose output
-logging.getLogger("PIL").setLevel(logging.ERROR)
-logging.getLogger("diffusers").setLevel(logging.WARNING)
-logging.getLogger("transformers").setLevel(logging.ERROR)
-
 import torch
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
@@ -187,14 +437,10 @@ def train(config_path):
     pbar = tqdm(total=max_steps, desc="train", initial=start_step)
     step = start_step
 
-    print(f"[INFO] 開始訓練循環，目標步數: {max_steps}", flush=True)
     while step < max_steps:
         for batch in loader:
             if step >= max_steps: break
 
-            if step == 0 or step % 10 == 0:
-                print(f"[STEP {step}] 載入 batch 數據...", flush=True)
-            
             pixel_RGB = batch["pixel_RGB"].to(device=device, dtype=torch.bfloat16)
             pixel_RGB = pipeline.image_processor.preprocess(pixel_RGB[0])
             H = int(batch["height"][0])     # By default, only a single sample per batch is allowed (because later the data will be concatenated based on bounding boxes, which have varying lengths)
@@ -202,39 +448,18 @@ def train(config_path):
             adapter_img = batch["whole_img"][0]
             caption = batch["caption"][0]
             layer_boxes = get_input_box(batch["layout"][0])
-            
-            if step == 0 or step % 10 == 0:
-                print(f"[STEP {step}] 數據載入完成 (尺寸: {W}x{H}, 圖層數: {len(layer_boxes)})", flush=True)
-                print(f"[STEP {step}] 開始文本編碼...", flush=True)
 
             with torch.no_grad():
-                # Suppress CLIP truncation warnings - only show simplified message
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore")
-                    # Temporarily suppress stdout/stderr to catch truncation messages
-                    f = StringIO()
-                    with redirect_stdout(f), redirect_stderr(f):
-                        prompt_embeds, pooled_prompt_embeds, text_ids = pipeline.encode_prompt(
-                            prompt=caption,
-                            prompt_2=None,
-                            num_images_per_prompt=1,
-                            max_sequence_length=int(config.get("max_sequence_length", 512)),
-                        )
-                    
-                    # Check if truncation occurred and show simplified message
-                    output = f.getvalue()
-                    if "truncated" in output.lower() or ("clip" in output.lower() and "token" in output.lower()):
-                        # Only show once every 10 steps to avoid spam
-                        if step % 10 == 0:
-                            print(f"[STEP {step}] 注意: 部分文本因長度限制已截斷", flush=True)
+                prompt_embeds, pooled_prompt_embeds, text_ids = pipeline.encode_prompt(
+                    prompt=caption,
+                    prompt_2=None,
+                    num_images_per_prompt=1,
+                    max_sequence_length=int(config.get("max_sequence_length", 512)),
+                )
 
                 prompt_embeds = prompt_embeds.to(device=device, dtype=torch.bfloat16)   # (1, 512, 4096)
                 pooled_prompt_embeds = pooled_prompt_embeds.to(device=device, dtype=torch.bfloat16)     # (1, 768)
                 text_ids = text_ids.to(device=device, dtype=torch.bfloat16)  # (512, 3)
-
-                if step == 0 or step % 10 == 0:
-                    print(f"[STEP {step}] 文本編碼完成", flush=True)
-                    print(f"[STEP {step}] 開始 Adapter 圖像編碼...", flush=True)
 
                 adapter_image, _, _ = pipeline.prepare_image(
                     image=adapter_img,
@@ -246,16 +471,8 @@ def train(config_path):
                     dtype=pipeline.transformer.dtype,
                 )
 
-            if step == 0 or step % 10 == 0:
-                print(f"[STEP {step}] Adapter 圖像編碼完成", flush=True)
-                print(f"[STEP {step}] 開始 VAE 編碼目標圖層 (共 {len(layer_boxes)} 層)...", flush=True)
-
             x0, latent_image_ids = encode_target_latents(pipeline, pixel_RGB.unsqueeze(0), n_layers=len(layer_boxes), list_layer_box=layer_boxes)
             _, L, C_lat, H_lat, W_lat = x0.shape
-
-            if step == 0 or step % 10 == 0:
-                print(f"[STEP {step}] VAE 編碼完成 (latent shape: {x0.shape})", flush=True)
-                print(f"[STEP {step}] 準備噪聲和 timestep...", flush=True)
 
             x1 = torch.randn_like(x0)
             image_seq_len = latent_image_ids.shape[0]
@@ -281,9 +498,6 @@ def train(config_path):
             pipeline.transformer.train()
             pipeline.multiLayerAdapter.train()
 
-            if step == 0 or step % 10 == 0:
-                print(f"[STEP {step}] 開始 MultiLayer Adapter 前向傳播...", flush=True)
-
             (
                 adapter_block_samples,
                 adapter_single_block_samples,
@@ -301,9 +515,6 @@ def train(config_path):
                 joint_attention_kwargs=None,
                 return_dict=False,
             )
-
-            if step == 0 or step % 10 == 0:
-                print(f"[STEP {step}] MultiLayer Adapter 完成，開始 Transformer (DiT) 前向傳播...", flush=True)
 
             v_pred = pipeline.transformer(
                 hidden_states=xt,
@@ -326,19 +537,12 @@ def train(config_path):
                 return_dict=False,
             )[0]  # [1, L, C, H_lat, W_lat]
 
-            if step == 0 or step % 10 == 0:
-                print(f"[STEP {step}] Transformer 前向傳播完成，計算 loss...", flush=True)
-
             # MSE（masked）
             mse = (v_pred - v_star) ** 2
             mse = mse.mean(dim=2, keepdim=True)  # [1,L,1,H_lat,W_lat]
             loss = (mse * mask).sum() / (mask.sum() + 1e-8)
 
             loss = loss / accum_steps
-            
-            if step == 0 or step % 10 == 0:
-                print(f"[STEP {step}] Loss: {loss.item():.6f}，開始反向傳播...", flush=True)
-            
             loss.float().backward()
             if (step + 1) % accum_steps == 0:
                 torch.nn.utils.clip_grad_norm_(params, max_norm=float(config.get("grad_clip", 1.0)))
@@ -350,18 +554,11 @@ def train(config_path):
                 optimizer_adapter.zero_grad(set_to_none=True)
 
                 tb_writer.add_scalar("loss", loss.item(), step)
-                
-                if step == 0 or step % 10 == 0:
-                    print(f"[STEP {step}] 權重更新完成！", flush=True)
 
             step += 1
             if step % log_every == 0:
                 pbar.set_postfix(loss=float(loss.detach().cpu()))
                 pbar.update(log_every)
-                print(f"[INFO] Step {step}/{max_steps} 完成，Loss: {loss.item():.6f}", flush=True)
-            elif step % 10 == 0:
-                # 每 10 步也顯示簡短進度
-                print(f"[INFO] Step {step}/{max_steps}，Loss: {loss.item():.6f}", flush=True)
 
             if step % save_every == 0 or step == max_steps:
                 save_checkpoint(pipeline.transformer, pipeline.multiLayerAdapter, optimizer, optimizer_adapter, scheduler, scheduler_adapter, step, out_dir)

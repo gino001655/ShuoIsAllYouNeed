@@ -1,0 +1,42 @@
+seed: 42
+
+# Dataset
+data_dir: "/tmp2/b12902041/Gino/PrismLayersPro"   # expects {data_dir}/data/*.parquet (Method A)
+split: "train"
+
+# Training steps
+max_steps: 1000
+log_every: 20
+save_every: 200
+accum_steps: 1
+grad_clip: 1.0
+
+# VRAM / performance switches
+mixed_precision: "bf16"         # "bf16" | "fp16" | "fp32"
+gradient_checkpointing: true
+sdpa_kernel: "auto"             # "auto" | "flash" | "mem_efficient" | "math"
+max_layers_per_step: 8          # randomly subsample layers per step (<=0 means use all)
+use_image_conditioning: false
+image_conditioning_scale: 0.5
+enable_tf32: true
+torch_compile: false            # compile SD3 transformer for speed (may increase compile time)
+
+# UAE/SD3 paths (diffusers-style folders)
+sd3_model_path: "/path/to/stable-diffusion-3.5-large"   # contains vae/, text_encoder*, tokenizer* ...
+dit_path: "/path/to/dit"                                # SD3Transformer2DModel folder
+dit_lora_path: null                                     # optional: LoRA folder for denoiser
+
+# UAE Qwen2.5-VL paths
+llm_path: "/path/to/qwen2.5-vl-3b"
+llm_lora_path: null
+llm_processor_path: "/path/to/qwen2.5-vl-processor"
+
+# Optional: load LLM in 4-bit to save VRAM
+llm_load_in_4bit: false
+llm_attn_implementation: "sdpa"    # "sdpa" | "flash_attention_2"
+
+# Output
+output_dir: "/tmp/cld2_out"
+
+# Layer embedding
+max_layer_num: 64
