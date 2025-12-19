@@ -1,5 +1,8 @@
 import os, random
-os.environ["CUDA_VISIBLE_DEVICES"] = "7"
+# Set CUDA_VISIBLE_DEVICES before importing torch
+# You can modify this or set it via environment variable
+if "CUDA_VISIBLE_DEVICES" not in os.environ:
+    os.environ["CUDA_VISIBLE_DEVICES"] = "7"
 import torch
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
@@ -21,6 +24,11 @@ def train(config_path):
     config = load_config(config_path)
     seed_everything(config.get("seed", 1234))
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"[INFO] Using device: {device}", flush=True)
+    if torch.cuda.is_available():
+        print(f"[INFO] CUDA available. GPU count: {torch.cuda.device_count()}, Current GPU: {torch.cuda.current_device()}, GPU name: {torch.cuda.get_device_name(0)}", flush=True)
+    else:
+        print("[WARNING] CUDA not available! Training will run on CPU (very slow).", flush=True)
 
     print("[INFO] Loading pretrained Transformer...", flush=True)
     transformer_orig = FluxTransformer2DModel.from_pretrained(
@@ -36,10 +44,13 @@ def train(config_path):
     mmdit_config["max_layer_num"] = config['max_layer_num']
     mmdit_config = FrozenDict(mmdit_config)
 
-    transformer = CustomFluxTransformer2DModel.from_config(mmdit_config).to(dtype=torch.bfloat16)
+    transformer = CustomFluxTransformer2DModel.from_config(mmdit_config).to(dtype=torch.bfloat16).to(device)
     missing_keys, unexpected_keys = transformer.load_state_dict(transformer_orig.state_dict(), strict=False)
     if missing_keys: print(f"[WARN] Missing keys: {missing_keys}")
     if unexpected_keys: print(f"[WARN] Unexpected keys: {unexpected_keys}")
+    # Free memory from transformer_orig
+    del transformer_orig
+    torch.cuda.empty_cache() if torch.cuda.is_available() else None
 
     if 'pretrained_lora_dir' in config:
         print("[INFO] Loading LoRA weights...", flush=True)
@@ -59,7 +70,7 @@ def train(config_path):
 
     # Load MultiLayer-Adapter
     print("[INFO] Loading MultiLayer-Adapter weights...", flush=True)
-    multiLayer_adapter = MultiLayerAdapter.from_pretrained(config['pretrained_adapter_path']).to(torch.bfloat16).to(torch.device("cuda"))
+    multiLayer_adapter = MultiLayerAdapter.from_pretrained(config['pretrained_adapter_path']).to(torch.bfloat16).to(device)
     multiLayer_adapter.set_layerPE(transformer.layer_pe, transformer.max_layer_num)
     print("[INFO] Successfully loaded MultiLayer-Adapter weights.", flush=True)
 
@@ -72,6 +83,14 @@ def train(config_path):
         cache_dir=config.get('cache_dir', None),
     ).to(device)
     pipeline.set_multiLayerAdapter(multiLayer_adapter)
+    
+    # Verify models are on correct device
+    if torch.cuda.is_available():
+        transformer_device = next(pipeline.transformer.parameters()).device
+        adapter_device = next(pipeline.multiLayerAdapter.parameters()).device
+        print(f"[INFO] Transformer device: {transformer_device}, Adapter device: {adapter_device}", flush=True)
+        if transformer_device.type != 'cuda' or adapter_device.type != 'cuda':
+            print(f"[WARNING] Models are not on GPU! Transformer: {transformer_device}, Adapter: {adapter_device}", flush=True)
     pipeline.transformer.gradient_checkpointing = True
     pipeline.multiLayerAdapter.gradient_checkpointing = True
 
