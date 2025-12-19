@@ -68,6 +68,13 @@ python custom_layer_order_train.py \
 跑 layer 深度預測
 ./run_infer_parsed_dataset.sh -- --splits test --use-amp --skip-existing (7GB VRAM)
 
+--跑layer深度預測只跑一張
+cd ml-depth-pro
+
+python custom_layer_order_infer_parsed_dataset.py \
+  --ckpt-path /tmp2/b12902041/Gino/checkpoint_best.pt
+  --single-image /tmp2/b12902041/Gino/ShuoIsAllYouNeed/Yao/final/testing-set/inputs/piccollage_017.png \
+  --out-path result_layer.png
 
 ---
 train RT-DETR with depth image
@@ -101,9 +108,9 @@ cd /tmp2/b12902041/Gino/ShuoIsAllYouNeed/Yao/final/RT-DETR/rtdetr_pytorch
 
 python tools/infer_layer.py \
     -c configs/rtdetr/rtdetr_r50vd_layer_prediction.yml \
-    -r output/rtdetr_r50vd_layer_prediction/checkpoint0000.pth \
-    --rgb-file /tmp2/b12902041/Gino/preprocessed_data/images/val/00017535.png \
-    --depth-file /tmp2/b12902041/Gino/preprocessed_data/depths/val/00017535.png \
+    -r output/fixed_version/checkpoint0005.pth \
+    --rgb-file /tmp2/b12902041/Gino/ShuoIsAllYouNeed/Yao/final/testing-set/inputs/piccollage_017.png \
+    --depth-file /tmp2/b12902041/Gino/ShuoIsAllYouNeed/Yao/final/ml-depth-pro/result_layer.png \
     -o test_result.jpg \
     -d cuda:0 \
-    -t 0.2
+    -t 0.3

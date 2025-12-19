@@ -34,6 +34,10 @@ class CocoDetection(torchvision.datasets.CocoDetection):
         self.return_masks = return_masks
         self.remap_mscoco_category = remap_mscoco_category
 
+        # Patch: Ensure 'info' exists to prevent pycocotools crash
+        if 'info' not in self.coco.dataset:
+            self.coco.dataset['info'] = {}
+
     def __getitem__(self, idx):
         img, target = super(CocoDetection, self).__getitem__(idx)
         image_id = self.ids[idx]

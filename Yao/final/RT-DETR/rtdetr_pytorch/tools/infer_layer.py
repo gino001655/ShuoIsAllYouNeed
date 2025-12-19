@@ -61,7 +61,13 @@ def prepare_input(rgb_pil, depth_pil, target_size=640):
     depth_resized = depth_pil.resize((target_size, target_size), Image.NEAREST)
     
     # Convert to tensors
-    rgb_tensor = T.ToTensor()(rgb_resized)  # [3, H, W] in [0, 1]
+    # Convert to tensors
+    # RGB Normalization (ImageNet)
+    rgb_transform = T.Compose([
+        T.ToTensor(),
+        T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
+    rgb_tensor = rgb_transform(rgb_resized)  # [3, H, W] normalized
     depth_array = np.array(depth_resized).astype(np.float32) / 255.0
     depth_tensor = torch.from_numpy(depth_array).unsqueeze(0)  # [1, H, W]
     
@@ -122,6 +128,70 @@ def visualize_predictions(rgb_pil, boxes, labels, scores, layers,
     plt.savefig(save_path, dpi=150, bbox_inches='tight')
     plt.close()
     print(f"✅ Result saved to {save_path}")
+
+
+
+def calculate_iou(box1, box2):
+    """
+    Calculate IoU between two boxes (x1, y1, x2, y2).
+    """
+    x1 = max(box1[0], box2[0])
+    y1 = max(box1[1], box2[1])
+    x2 = min(box1[2], box2[2])
+    y2 = min(box1[3], box2[3])
+    
+    intersection = max(0, x2 - x1) * max(0, y2 - y1)
+    area1 = (box1[2] - box1[0]) * (box1[3] - box1[1])
+    area2 = (box2[2] - box2[0]) * (box2[3] - box2[1])
+    
+    union = area1 + area2 - intersection
+    return intersection / union if union > 0 else 0
+
+def custom_layer_nms(boxes, scores, labels, layers, iou_threshold=0.9, layer_diff_threshold=0.1):
+    """
+    Custom NMS:
+    If IoU > 0.9 AND abs(L1 - L2) < 0.1:
+        Keep the one with higher confidence score.
+    """
+    if len(boxes) == 0:
+        return np.array([]), np.array([]), np.array([]), np.array([])
+        
+    # Sort by score descending
+    indices = np.argsort(scores)[::-1]
+    keep_indices = []
+    
+    while len(indices) > 0:
+        current_idx = indices[0]
+        keep_indices.append(current_idx)
+        
+        if len(indices) == 1:
+            break
+            
+        # Compare current box with all remaining boxes
+        remaining_indices = indices[1:]
+        current_box = boxes[current_idx]
+        current_layer = layers[current_idx]
+        
+        valid_mask = []
+        for idx in remaining_indices:
+            other_box = boxes[idx]
+            other_layer = layers[idx]
+            
+            iou = calculate_iou(current_box, other_box)
+            layer_diff = abs(current_layer - other_layer)
+            
+            # Condition to SUPPRESS:
+            # Overlap high AND Layer close -> Suppress (since current has higher score)
+            should_suppress = (iou > iou_threshold) and (layer_diff < layer_diff_threshold)
+            
+            # Keep if NOT strictly suppressed
+            valid_mask.append(not should_suppress)
+            
+        # Update indices to only those we kept
+        indices = remaining_indices[np.array(valid_mask, dtype=bool)]
+    
+    keep_indices = np.array(keep_indices)
+    return boxes[keep_indices], scores[keep_indices], labels[keep_indices], layers[keep_indices]
 
 
 def main(args):
@@ -216,7 +286,15 @@ def main(args):
         boxes_xyxy.append([x1, y1, x2, y2])
     boxes_xyxy = np.array(boxes_xyxy)
     
-    print(f"Found {len(boxes_xyxy)} detections (threshold={args.threshold})")
+    print(f"Before Custom NMS: {len(boxes_xyxy)} boxes")
+
+    # Apply Custom NMS
+    boxes_xyxy, scores_np, labels_np, layers_np = custom_layer_nms(
+        boxes_xyxy, scores_np, labels_np, layers_np, 
+        iou_threshold=0.9, layer_diff_threshold=0.1
+    )
+    
+    print(f"After Custom NMS: {len(boxes_xyxy)} detections (threshold={args.threshold})")
     
     # Print predictions
     for i, (box, label, score, layer) in enumerate(zip(boxes_xyxy, labels_np, scores_np, layers_np)):

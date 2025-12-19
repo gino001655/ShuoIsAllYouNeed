@@ -31,6 +31,60 @@ ConvertDtype = register(T.ConvertDtype)
 SanitizeBoundingBox = register(T.SanitizeBoundingBox)
 RandomCrop = register(T.RandomCrop)
 Normalize = register(T.Normalize)
+GaussianBlur = register(T.GaussianBlur)
+
+
+@register
+class RandomDepthErasing(T.Transform):
+    """
+    Randomly erases a rectangular region in the depth channel (4th channel) of the input image.
+    This simulates 'missing depth' or occlusion for robustness.
+    """
+    def __init__(self, p=0.5, scale=(0.02, 0.33), ratio=(0.3, 3.3), value=0):
+        super().__init__()
+        self.p = p
+        self.scale = scale
+        self.ratio = ratio
+        self.value = value
+        self.eraser = T.RandomErasing(p=1.0, scale=scale, ratio=ratio, value=value)
+
+    def forward(self, *inputs):
+        # inputs is a tuple of arguments passed to the transform.
+        # If called from Compose, it might be ((image, target),) or (image, target).
+        # We assume standard torchvision v2 behavior: unwrap if single element is tuple/list.
+        
+        flat_inputs = inputs if len(inputs) > 1 else inputs[0]
+        
+        # If still only image, check if it's the one we want
+        image = flat_inputs[0] if isinstance(flat_inputs, (list, tuple)) else flat_inputs
+
+        if torch.rand(1) < self.p:
+            if isinstance(image, (datapoints.Image, torch.Tensor)) and image.shape[0] > 3:
+                # Extract depth channel: [1, H, W]
+                # Keep separate for processing
+                depth = image[3:4, :, :]
+                
+                # Apply RandomErasing (force p=1.0)
+                erased_depth = self.eraser(depth)
+                
+                # Re-assemble
+                new_image = torch.cat([image[:3], erased_depth], dim=0)
+                
+                if isinstance(image, datapoints.Image):
+                    new_image = datapoints.Image(new_image)
+                
+                # Update inputs
+                if isinstance(flat_inputs, (list, tuple)):
+                    new_inputs = list(flat_inputs)
+                    new_inputs[0] = new_image
+                    return tuple(new_inputs)
+                else:
+                    return new_image
+        
+        # If no change, return original inputs unwrapped/wrapped matching expected signature?
+        # Actually v2 transforms return the modified structure. 
+        # If input was ((img, tgt),), we should return (img, tgt).
+        return flat_inputs
 
 
 
