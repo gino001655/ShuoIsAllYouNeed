@@ -406,3 +406,4 @@ bash run_parallel_caption_generation.sh
 **输出**: `caption_mapping_full.json`（包含 ~18,000 个 captions）
 
 **现在可以开始全量生成了！** 🚀
+
