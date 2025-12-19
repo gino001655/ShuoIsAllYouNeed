@@ -216,7 +216,26 @@ def inference_layout(config):
         
         adapter_img = batch["whole_img"][0]
         caption = batch["caption"][0]
-        layer_boxes = get_input_box(batch["layout"][0]) 
+        
+        # 計算尺寸調整比例
+        scale_h = height / original_height if original_height > 0 else 1.0
+        scale_w = width / original_width if original_width > 0 else 1.0
+        
+        # 調整 layout 座標以匹配調整後的尺寸
+        original_layout = batch["layout"][0]
+        adjusted_layout = []
+        for layer_box in original_layout:
+            # layer_box 格式: [x1, y1, x2, y2]
+            x1, y1, x2, y2 = layer_box
+            # 按比例調整座標
+            adjusted_x1 = int(x1 * scale_w)
+            adjusted_y1 = int(y1 * scale_h)
+            adjusted_x2 = int(x2 * scale_w)
+            adjusted_y2 = int(y2 * scale_h)
+            adjusted_layout.append([adjusted_x1, adjusted_y1, adjusted_x2, adjusted_y2])
+        
+        # 使用調整後的 layout 計算 layer_boxes
+        layer_boxes = get_input_box(adjusted_layout) 
 
         # Generate layers using pipeline
         x_hat, image, latents = pipeline(
