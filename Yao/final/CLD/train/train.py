@@ -8,7 +8,7 @@ from io import StringIO
 # Set CUDA_VISIBLE_DEVICES before importing torch
 # You can modify this or set it via environment variable
 if "CUDA_VISIBLE_DEVICES" not in os.environ:
-os.environ["CUDA_VISIBLE_DEVICES"] = "7"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "7"
 
 # Suppress verbose warnings and truncation messages
 os.environ["TRANSFORMERS_VERBOSITY"] = "error"
@@ -261,12 +261,12 @@ def train(config_path):
                     # Temporarily suppress stdout/stderr to catch truncation messages
                     f = StringIO()
                     with redirect_stdout(f), redirect_stderr(f):
-                prompt_embeds, pooled_prompt_embeds, text_ids = pipeline.encode_prompt(
-                    prompt=caption,
-                    prompt_2=None,
-                    num_images_per_prompt=1,
-                    max_sequence_length=int(config.get("max_sequence_length", 512)),
-                )
+                        prompt_embeds, pooled_prompt_embeds, text_ids = pipeline.encode_prompt(
+                            prompt=caption,
+                            prompt_2=None,
+                            num_images_per_prompt=1,
+                            max_sequence_length=int(config.get("max_sequence_length", 512)),
+                        )
                     
                     # Check if truncation occurred and show simplified message
                     output = f.getvalue()
