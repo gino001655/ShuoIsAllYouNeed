@@ -180,9 +180,17 @@ def inference_layout(config):
 
     pipeline = initialize_pipeline(config)
 
-    # 嘗試載入 dataset，如果 custom_dataset 失敗則 fallback 到原始 dataset
-    # Determine which dataset class to use
-    if _use_custom_dataset:
+    # 嘗試載入 dataset，支持 indexed dataset (方案 B)
+    # Check if using indexed dataset (for TAData with caption.json)
+    if config.get('use_indexed_dataset', False):
+        print("[INFO] Using DLCVLayoutDatasetIndexed (index-based caption matching)", flush=True)
+        from tools.dlcv_dataset_indexed import DLCVLayoutDatasetIndexed, collate_fn
+        dataset = DLCVLayoutDatasetIndexed(
+            data_dir=config['data_dir'],
+            caption_json_path=config.get('caption_json', None),
+            enable_debug=config.get('enable_dataset_debug', False),
+        )
+    elif _use_custom_dataset:
         try:
             dataset = CustomLayoutTrainDataset(config['data_dir'], split="test")
             collate_fn = custom_collate_fn
@@ -215,11 +223,17 @@ def inference_layout(config):
             print(f"[INFO] Reached max_samples limit ({max_samples}), stopping inference", flush=True)
             break
             
-        print(f"Processing case {idx}", flush=True)
+        print(f"\n{'='*60}")
+        print(f"處理樣本 {idx}")
+        print(f"{'='*60}")
 
         # collate_fn returns batch[0] directly when batch_size=1, so no need for [0] indexing
         height = int(batch["height"])
         width = int(batch["width"])
+        
+        # 顯示樣本資訊
+        print(f"  📊 Canvas 尺寸: {width} x {height}")
+        print(f"  🎨 圖層數量: {len(batch['layout'])}")
         
         # 調整為 16 的倍數（向上取整）- 因為 latent space 需要 /16
         original_height = height
@@ -232,6 +246,19 @@ def inference_layout(config):
         
         adapter_img = batch["whole_img"]
         caption = batch["caption"]
+        
+        # 顯示 caption 和圖層詳情
+        caption_preview = caption[:150] + '...' if len(caption) > 150 else caption
+        print(f"  📝 Caption: {caption_preview}")
+        print(f"  📏 Caption 長度: {len(caption)} 字元")
+        
+        # 顯示前 5 個圖層的資訊
+        print(f"  🖼️  圖層詳情:")
+        for i, layer in enumerate(batch["layout"][:5]):
+            print(f"    Layer {i}: bbox=({layer['left']:.0f}, {layer['top']:.0f}, {layer['width']:.0f}, {layer['height']:.0f}), type={layer.get('type', 'unknown')}")
+        if len(batch["layout"]) > 5:
+            print(f"    ... 還有 {len(batch['layout']) - 5} 個圖層")
+        print(f"{'='*60}\n")
         
         # 計算尺寸調整比例
         scale_h = height / original_height if original_height > 0 else 1.0

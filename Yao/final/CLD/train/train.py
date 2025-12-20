@@ -168,35 +168,76 @@ def train(config_path):
         lr_lambda=lambda step: 1.0
     )
 
-    # 嘗試使用 DLCVLayoutDataset（適用於 DLCV 格式數據，支持 caption mapping）
+    # 載入 dataset，支持三種模式：
+    # 1. Indexed dataset (TAData + caption.json，用 index 匹配)
+    # 2. DLCVLayoutDataset (path-based dataset + caption mapping)
+    # 3. LayoutTrainDataset (PrismLayersPro format)
+    
     caption_mapping_path = config.get('caption_mapping', None)
     enable_dataset_debug = config.get('enable_dataset_debug', True)  # 默認啟用，顯示前幾個樣本的載入情況
+    use_indexed_dataset = config.get('use_indexed_dataset', False)
     
-    try:
-        from tools.dlcv_dataset import DLCVLayoutDataset, collate_fn as dlcv_collate_fn
-        print(f"[INFO] 使用 DLCVLayoutDataset（DLCV 格式）", flush=True)
+    print("\n" + "="*60)
+    print("載入訓練數據集")
+    print("="*60)
+    
+    if use_indexed_dataset:
+        # 方案 B: 使用 indexed dataset (TAData + caption.json)
+        print(f"[INFO] 使用 DLCVLayoutDatasetIndexed (Index-based caption matching)", flush=True)
+        print(f"[INFO] Data dir: {config['data_dir']}", flush=True)
+        print(f"[INFO] Caption JSON: {caption_mapping_path}", flush=True)
+        
+        from tools.dlcv_dataset_indexed import DLCVLayoutDatasetIndexed, collate_fn as indexed_collate_fn
+        
         if enable_dataset_debug:
-            print(f"[INFO] Dataset debug enabled: will show details for first few samples", flush=True)
-        dataset = DLCVLayoutDataset(
+            print(f"[INFO] 🔍 Dataset debug enabled: 將顯示前 3 個樣本的詳細資訊", flush=True)
+        
+        dataset = DLCVLayoutDatasetIndexed(
             data_dir=config['data_dir'],
-            split="train",
-            caption_mapping_path=caption_mapping_path,
-            enable_debug=enable_dataset_debug
+            caption_json_path=caption_mapping_path,
+            enable_debug=enable_dataset_debug,
         )
-        loader = DataLoader(dataset, batch_size=1, shuffle=True, num_workers=0, collate_fn=dlcv_collate_fn)
-        if caption_mapping_path:
-            print(f"[INFO] 使用 LLaVA 生成的 captions: {caption_mapping_path}", flush=True)
-    except Exception as e:
-        print(f"[INFO] DLCVLayoutDataset 失敗，回退到 LayoutTrainDataset: {e}", flush=True)
-        print(f"[INFO] 使用 LayoutTrainDataset（PrismLayersPro 格式）", flush=True)
-        if enable_dataset_debug:
-            print(f"[INFO] Dataset debug enabled: will show details for first few samples", flush=True)
-        dataset = LayoutTrainDataset(
-            data_dir=config['data_dir'], 
-            split="train",
-            enable_debug=enable_dataset_debug
-        )
-        loader = DataLoader(dataset, batch_size=1, shuffle=True, num_workers=0, collate_fn=collate_fn)
+        loader = DataLoader(dataset, batch_size=1, shuffle=True, num_workers=0, collate_fn=indexed_collate_fn)
+        print(f"[INFO] ✓ 載入 {len(dataset)} 個訓練樣本", flush=True)
+    
+    else:
+        # 方案 A 或原始方案
+        try:
+            from tools.dlcv_dataset import DLCVLayoutDataset, collate_fn as dlcv_collate_fn
+            print(f"[INFO] 使用 DLCVLayoutDataset（DLCV 格式，path-based）", flush=True)
+            
+            if enable_dataset_debug:
+                print(f"[INFO] 🔍 Dataset debug enabled: 將顯示前幾個樣本的詳細資訊", flush=True)
+            
+            dataset = DLCVLayoutDataset(
+                data_dir=config['data_dir'],
+                split="train",
+                caption_mapping_path=caption_mapping_path,
+                enable_debug=enable_dataset_debug
+            )
+            loader = DataLoader(dataset, batch_size=1, shuffle=True, num_workers=0, collate_fn=dlcv_collate_fn)
+            
+            if caption_mapping_path:
+                print(f"[INFO] 使用 LLaVA 生成的 captions: {caption_mapping_path}", flush=True)
+            
+            print(f"[INFO] ✓ 載入 {len(dataset)} 個訓練樣本", flush=True)
+            
+        except Exception as e:
+            print(f"[INFO] DLCVLayoutDataset 失敗，回退到 LayoutTrainDataset: {e}", flush=True)
+            print(f"[INFO] 使用 LayoutTrainDataset（PrismLayersPro 格式）", flush=True)
+            
+            if enable_dataset_debug:
+                print(f"[INFO] 🔍 Dataset debug enabled: 將顯示前幾個樣本的詳細資訊", flush=True)
+            
+            dataset = LayoutTrainDataset(
+                data_dir=config['data_dir'],
+                split="train",
+                enable_debug=enable_dataset_debug
+            )
+            loader = DataLoader(dataset, batch_size=1, shuffle=True, num_workers=0, collate_fn=collate_fn)
+            print(f"[INFO] ✓ 載入 {len(dataset)} 個訓練樣本", flush=True)
+    
+    print("="*60 + "\n", flush=True)
 
     max_steps = int(config.get("max_steps", 1000))
     log_every = int(config.get("log_every", 50))
@@ -216,13 +257,13 @@ def train(config_path):
     step = start_step
 
     print(f"[INFO] 開始訓練循環，目標步數: {max_steps}", flush=True)
+    print(f"[INFO] 每 10 步顯示詳細資訊，每 {log_every} 步記錄 loss\n", flush=True)
+    
     while step < max_steps:
         for batch in loader:
             if step >= max_steps: break
 
-            if step == 0 or step % 10 == 0:
-                print(f"[STEP {step}] 載入 batch 數據...", flush=True)
-
+            # 提取 batch 數據
             pixel_RGB = batch["pixel_RGB"].to(device=device, dtype=torch.bfloat16)
             pixel_RGB = pipeline.image_processor.preprocess(pixel_RGB)
             H = int(batch["height"])     # By default, only a single sample per batch is allowed (because later the data will be concatenated based on bounding boxes, which have varying lengths)
@@ -231,8 +272,25 @@ def train(config_path):
             caption = batch["caption"]
             layer_boxes = get_input_box(batch["layout"])
             
+            # 顯示詳細資訊（每 10 步或第 0 步）
             if step == 0 or step % 10 == 0:
-                print(f"[STEP {step}] 數據載入完成 (尺寸: {W}x{H}, 圖層數: {len(layer_boxes)})", flush=True)
+                print(f"\n{'='*60}")
+                print(f"[STEP {step}] 訓練數據詳情")
+                print(f"{'='*60}")
+                print(f"  📊 Canvas 尺寸: {W} x {H}")
+                print(f"  🎨 圖層數量: {len(layer_boxes)}")
+                
+                # 顯示每個圖層的資訊
+                for i, layer in enumerate(batch["layout"][:5]):  # 只顯示前 5 個圖層
+                    print(f"    Layer {i}: bbox=({layer['left']:.0f}, {layer['top']:.0f}, {layer['width']:.0f}, {layer['height']:.0f}), type={layer.get('type', 'unknown')}")
+                if len(batch["layout"]) > 5:
+                    print(f"    ... 還有 {len(batch["layout"]) - 5} 個圖層")
+                
+                # 顯示 caption（截斷顯示）
+                caption_preview = caption[:150] + '...' if len(caption) > 150 else caption
+                print(f"  📝 Caption: {caption_preview}")
+                print(f"  📏 Caption 長度: {len(caption)} 字元")
+                print(f"{'='*60}")
                 print(f"[STEP {step}] 開始文本編碼...", flush=True)
 
             with torch.no_grad():
