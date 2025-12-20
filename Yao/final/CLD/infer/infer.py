@@ -277,26 +277,37 @@ def inference_layout(config):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     generator = torch.Generator(device=device).manual_seed(config['seed'])
 
+    # Helper function to safely extract batch values
+    # Handles both formats: single sample dict (from indexed/standard collate_fn) or dict with lists
+    def get_batch_value(batch_dict, key):
+        """Get value from batch, handling both list and direct value formats."""
+        if key not in batch_dict:
+            raise KeyError(f"Batch does not contain key '{key}'. Available keys: {list(batch_dict.keys())}")
+        value = batch_dict[key]
+        # If value is a list/tuple with elements, return first element
+        if isinstance(value, (list, tuple)) and len(value) > 0:
+            return value[0]
+        # Otherwise return value directly (already a single value)
+        return value
+
     idx = 0
     for batch in loader:
         print(f"Processing case {idx}", flush=True)
 
-        # Handle different collate_fn formats automatically:
-        # - Some collate_fn return single sample dict (batch_size=1): batch["height"] is int
-        # - Some collate_fn return dict with lists: batch["height"] is list
-        # Auto-detect by checking if height is a list
-        def get_batch_value(key):
-            """Get value from batch, handling both list and direct value formats."""
-            value = batch[key]
-            if isinstance(value, (list, tuple)) and len(value) > 0:
-                return value[0]
-            return value
+        # Extract batch data - automatically handles different collate_fn formats
+        try:
+            height = int(get_batch_value(batch, "height"))
+            width = int(get_batch_value(batch, "width"))
+            adapter_img = get_batch_value(batch, "whole_img")
+            caption = get_batch_value(batch, "caption")
+            layout = get_batch_value(batch, "layout")
+        except (KeyError, TypeError, ValueError) as e:
+            print(f"[ERROR] Failed to extract batch data: {e}", flush=True)
+            print(f"[DEBUG] Batch keys: {list(batch.keys()) if isinstance(batch, dict) else 'Not a dict'}", flush=True)
+            print(f"[DEBUG] Batch type: {type(batch)}", flush=True)
+            idx += 1
+            continue
         
-        height = int(get_batch_value("height"))
-        width = int(get_batch_value("width"))
-        adapter_img = get_batch_value("whole_img")
-        caption = get_batch_value("caption")
-        layout = get_batch_value("layout")
         raw_layer_boxes = get_input_box(layout)
         layer_boxes = []
         for box in raw_layer_boxes:
