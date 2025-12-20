@@ -422,8 +422,40 @@ def inference_layout(config):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--config_path", "-c", type=str, required=True, help="Path to the YAML configuration file.")
+    parser.add_argument("--validate", action="store_true", help="只驗證配置和數據集，不載入模型權重")
+    parser.add_argument("--dry-run", action="store_true", help="同 --validate，只驗證配置和數據集")
     args = parser.parse_args()
 
     config = load_config(args.config_path)
-
-    inference_layout(config)
+    
+    # 如果指定了驗證模式，只驗證不執行 inference
+    if args.validate or args.dry_run:
+        print("="*60)
+        print("驗證模式：只檢查配置和數據集，不載入模型權重")
+        print("="*60)
+        
+        # 導入驗證函數
+        try:
+            from infer.validate_config import validate_config
+            success = validate_config(args.config_path)
+            if success:
+                print("\n✓ 驗證通過！可以使用以下命令開始 inference:")
+                print(f"  python -m infer.infer -c {args.config_path}")
+                sys.exit(0)
+            else:
+                print("\n✗ 驗證失敗！請修正配置後重試")
+                sys.exit(1)
+        except ImportError:
+            print("[WARNING] 無法導入驗證模組，執行基本檢查...")
+            # 基本檢查
+            required_keys = ['data_dir', 'pretrained_model_name_or_path', 'layer_ckpt', 'lora_ckpt', 'adapter_lora_dir']
+            missing = [k for k in required_keys if k not in config or not config[k]]
+            if missing:
+                print(f"✗ 缺少必需參數: {missing}")
+                sys.exit(1)
+            else:
+                print("✓ 基本檢查通過")
+                sys.exit(0)
+    else:
+        # 正常執行 inference
+        inference_layout(config)
