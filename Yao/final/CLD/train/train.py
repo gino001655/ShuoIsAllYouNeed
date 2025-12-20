@@ -259,6 +259,11 @@ def train(config_path):
     print(f"[INFO] 開始訓練循環，目標步數: {max_steps}", flush=True)
     print(f"[INFO] 每 10 步顯示詳細資訊，每 {log_every} 步記錄 loss\n", flush=True)
     
+    # Optional: skip samples with <unk> in caption
+    skip_unk_captions = bool(config.get("skip_unk_captions", False))
+    unk_token = str(config.get("unk_token", "<unk>"))
+    unk_skip_min_count = int(config.get("unk_skip_min_count", 1))
+    
     while step < max_steps:
         for batch in loader:
             if step >= max_steps: break
@@ -270,7 +275,39 @@ def train(config_path):
             W = int(batch["width"])
             adapter_img = batch["whole_img"]
             caption = batch["caption"]
-            layer_boxes = get_input_box(batch["layout"])
+            # Build layer boxes and filter out invalid (zero-area) boxes to prevent model crash
+            raw_layer_boxes = get_input_box(batch["layout"])
+            valid_indices = []
+            layer_boxes = []
+            for bi, box in enumerate(raw_layer_boxes):
+                if box is None or len(box) < 4:
+                    continue
+                x1, y1, x2, y2 = box[:4]
+                if (x2 - x1) > 0 and (y2 - y1) > 0:
+                    valid_indices.append(bi)
+                    layer_boxes.append(box)
+            if len(layer_boxes) == 0:
+                sample_idx = batch.get("idx", None)
+                print(f"[SKIP] step={step} sample_idx={sample_idx} no valid layer boxes -> skip", flush=True)
+                continue
+            if len(layer_boxes) != len(raw_layer_boxes):
+                sample_idx = batch.get("idx", None)
+                print(
+                    f"[WARN] step={step} sample_idx={sample_idx} "
+                    f"filtered invalid boxes: {len(raw_layer_boxes)} -> {len(layer_boxes)}",
+                    flush=True,
+                )
+                # Keep pixel layers aligned with boxes (dim 0 is layer dimension)
+                pixel_RGB = pixel_RGB[valid_indices]
+
+            # Skip samples with <unk> in caption (data quality filter)
+            if skip_unk_captions:
+                caption_str = caption if isinstance(caption, str) else str(caption)
+                unk_count = caption_str.count(unk_token) if unk_token else 0
+                if unk_token and unk_count >= unk_skip_min_count:
+                    sample_idx = batch.get("idx", None)
+                    print(f"[SKIP] step={step} sample_idx={sample_idx} unk_count={unk_count} -> skip training this sample", flush=True)
+                    continue
             
             # 顯示詳細資訊（每 10 步或第 0 步）
             if step == 0 or step % 10 == 0:

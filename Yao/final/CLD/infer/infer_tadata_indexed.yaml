@@ -6,7 +6,7 @@ max_layer_num: 52
 
 # ⭐ 方案 B 配置：使用 TAData + caption.json
 use_indexed_dataset: true  # 啟用 index-based caption matching
-data_dir: "/workspace/dataset/DLCV_dataset/data"  # TAData 目錄
+data_dir: "/workspace/dataset/DLCV_dataset"  # TAData 目錄
 caption_json: "/workspace/ShuoIsAllYouNeed/Yao/final/CLD/caption_llava16_final.json"  # LLaVA captions
 
 # Debug 設定
@@ -16,11 +16,11 @@ max_samples: 10  # 限制樣本數量（測試用），設為 null 則處理全�
 # 模型路徑（根據你的環境調整）
 pretrained_model_name_or_path: "flux_model"
 pretrained_adapter_path: "Path_to_pretrained_FLUX_adapter"
-transp_vae_path: "ckpt/trans_vae"
+transp_vae_path: "ckpt/trans_vae/0008000.pt"
 pretrained_lora_dir: "ckpt/pre_trained_LoRA"
 lora_ckpt: "Path_to_save_training_ckpt/transformer"
 layer_ckpt: "Path_to_save_training_ckpt"
 adapter_lora_dir: "Path_to_save_training_ckpt/adapter"
 
 # 輸出目錄
-save_dir: "output/tadata_inference"
+save_dir: "output_newnewnew"

@@ -28,6 +28,9 @@ caption_mapping: "/workspace/ShuoIsAllYouNeed/Yao/final/CLD/caption_llava16_fina
 
 # Debug 設定
 enable_dataset_debug: true  # 顯示前 3 個樣本的詳細載入資訊
+skip_unk_captions: true
+unk_token: "<unk>"
+unk_skip_min_count: 1
 
 # 模型路徑（根據你的環境調整）
 artplus_lora_dir: "/workspace/ShuoIsAllYouNeed/Yao/final/CLD/ckpt/prism_ft_LoRA"

@@ -308,7 +308,13 @@ def inference_layout(config):
             adjusted_layout.append([adjusted_x1, adjusted_y1, adjusted_x2, adjusted_y2])
         
         # 使用調整後的 layout 計算 layer_boxes
-        layer_boxes = get_input_box(adjusted_layout) 
+        layer_boxes = get_input_box(adjusted_layout)
+        # Filter invalid (zero-area) boxes to avoid downstream crashes
+        layer_boxes = [b for b in layer_boxes if b and (b[2] - b[0]) > 0 and (b[3] - b[1]) > 0]
+        if len(layer_boxes) == 0:
+            print(f"[WARN] No valid layer boxes after filtering; skip sample {idx}", flush=True)
+            idx += 1
+            continue
 
         # Generate layers using pipeline
         x_hat, image, latents = pipeline(

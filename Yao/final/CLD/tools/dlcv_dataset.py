@@ -557,14 +557,18 @@ class DLCVLayoutDataset(Dataset):
             
             # Resize layer image to match bbox size
             target_w, target_h = x2 - x1, y2 - y1
-            if target_w > 0 and target_h > 0:
-                if layer_img_RGBA.size != (target_w, target_h):
-                    layer_img_RGBA = layer_img_RGBA.resize((target_w, target_h), Image.LANCZOS)
-                    layer_img_RGB = layer_img_RGB.resize((target_w, target_h), Image.LANCZOS)
-                
-                # Paste at the specified location
-                canvas_RGBA.paste(layer_img_RGBA, (x1, y1), layer_img_RGBA)
-                canvas_RGB.paste(layer_img_RGB, (x1, y1))
+            if target_w <= 0 or target_h <= 0:
+                if show_debug:
+                    print(f"  [SKIP] Layer {i}: Zero-area bbox after clamp (x1,y1,x2,y2)=({x1},{y1},{x2},{y2})")
+                continue
+            
+            if layer_img_RGBA.size != (target_w, target_h):
+                layer_img_RGBA = layer_img_RGBA.resize((target_w, target_h), Image.LANCZOS)
+                layer_img_RGB = layer_img_RGB.resize((target_w, target_h), Image.LANCZOS)
+            
+            # Paste at the specified location
+            canvas_RGBA.paste(layer_img_RGBA, (x1, y1), layer_img_RGBA)
+            canvas_RGB.paste(layer_img_RGB, (x1, y1))
             
             layer_image_RGBA.append(self.to_tensor(canvas_RGBA))
             layer_image_RGB.append(self.to_tensor(canvas_RGB))
@@ -581,6 +585,7 @@ class DLCVLayoutDataset(Dataset):
             self._layer_debug_count += 1
         
         return {
+            "idx": idx,
             "pixel_RGBA": pixel_RGBA,
             "pixel_RGB": pixel_RGB,
             "whole_img": whole_img_RGB,
