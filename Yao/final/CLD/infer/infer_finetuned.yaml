@@ -1,0 +1,33 @@
+seed: 42
+max_layer_num: 52
+num_inference_steps: 28
+
+# Inference parameters
+cfg: 4.0
+adapter_scale: 0.9
+
+# Dataset directory for inference
+data_dir: "/workspace/dataset/cld_dataset/snapshots/snapshot_1/data"
+
+# Base models (same paths as training)
+pretrained_model_name_or_path: "flux_model"
+pretrained_adapter_path: "Path_to_pretrained_FLUX_adapter"
+
+# Transparent VAE (optional, only if using transparency)
+transp_vae_path: "ckpt/trans_vae"
+
+# Base pre-trained LoRA (same as training)
+pretrained_lora_dir: "ckpt/pre_trained_LoRA"
+
+# Style-specific LoRA (Prismlayerspro style - this gets fused on top of pretrained_lora_dir)
+artplus_lora_dir: "/workspace/ShuoIsAllYouNeed/Yao/final/CLD/ckpt/prism_ft_LoRA"
+
+# YOUR FINE-TUNED CHECKPOINT PATHS
+# Important: Update checkpoint_XXXXX to match your actual checkpoint number from training
+# Example: If you see "checkpoint_001000" in FT_on_Crello_ckpt/, use that
+lora_ckpt: "FT_on_Crello_ckpt/checkpoint_020000/transformer"      # Fine-tuned Transformer LoRA
+layer_ckpt: "FT_on_Crello_ckpt/checkpoint_020000"                  # Directory with layer_pe.pth
+adapter_lora_dir: "FT_on_Crello_ckpt/checkpoint_020000/adapter"    # Fine-tuned Adapter LoRA
+
+# Output directory
+save_dir: "inference_results_finetuned"
