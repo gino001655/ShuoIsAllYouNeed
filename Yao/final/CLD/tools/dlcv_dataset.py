@@ -228,7 +228,7 @@ class DLCVLayoutDataset(Dataset):
         # Now get the processed item
         item = self.dataset[idx]
         
-        # Get full preview image (支持两种格式：Image 对象或字符串路径)
+        # Get full preview image (支持多种格式)
         preview_value = item["preview"]
         if isinstance(preview_value, Image.Image):
             # 格式 1: Image 对象（如 TAData/DLCV_dataset）
@@ -242,6 +242,21 @@ class DLCVLayoutDataset(Dataset):
                 preview_img = Image.open(fixed_path)
             except Exception as e:
                 raise ValueError(f"无法打开图片: {fixed_path} (原路径: {preview_path}), 错误: {e}")
+        elif isinstance(preview_value, dict):
+            # 格式 3: HuggingFace Image feature format (dict with 'bytes' or 'path')
+            if 'bytes' in preview_value and preview_value['bytes']:
+                from io import BytesIO
+                preview_img = Image.open(BytesIO(preview_value['bytes']))
+            elif 'path' in preview_value:
+                preview_path = preview_value['path']
+                fixed_path = self._fix_image_path(preview_path)
+                preview_img = Image.open(fixed_path)
+            else:
+                raise ValueError(f"preview dict 格式不支持，keys: {preview_value.keys()}")
+        elif isinstance(preview_value, bytes):
+            # 格式 4: 直接的 bytes
+            from io import BytesIO
+            preview_img = Image.open(BytesIO(preview_value))
         else:
             raise ValueError(f"preview 欄位格式不支持: {type(preview_value)}")
         
@@ -446,8 +461,9 @@ class DLCVLayoutDataset(Dataset):
                         print(f"  [SKIP] Layer {i}: Cannot crop from preview: {e}")
                     continue
             
-            # Fix path if it's a string (hardcoded path in parquet)
+            # 處理不同格式的 layer_img
             if isinstance(layer_img, str):
+                # 格式 1: 字符串路徑
                 original_path = layer_img
                 layer_img = self._fix_image_path(layer_img)
                 
@@ -455,7 +471,6 @@ class DLCVLayoutDataset(Dataset):
                     print(f"  [PATH FIX] Layer {i}: {original_path}")
                     print(f"           -> {layer_img}")
                 
-                # Try to load the image
                 try:
                     layer_img = Image.open(layer_img)
                     if show_debug:
@@ -465,7 +480,31 @@ class DLCVLayoutDataset(Dataset):
                         print(f"  [SKIP] Layer {i}: Cannot load image: {e}")
                     continue
             
-            # Convert to RGBA
+            elif isinstance(layer_img, dict):
+                # 格式 2: HuggingFace Image feature (dict with 'bytes')
+                if 'bytes' in layer_img and layer_img['bytes']:
+                    from io import BytesIO
+                    layer_img = Image.open(BytesIO(layer_img['bytes']))
+                    if show_debug:
+                        print(f"  [CONVERT] Layer {i}: dict → PIL Image {layer_img.size}")
+                elif 'path' in layer_img:
+                    layer_path = self._fix_image_path(layer_img['path'])
+                    layer_img = Image.open(layer_path)
+                    if show_debug:
+                        print(f"  [LOAD] Layer {i}: from path in dict {layer_img.size}")
+                else:
+                    if show_debug:
+                        print(f"  [SKIP] Layer {i}: dict format not supported, keys: {layer_img.keys()}")
+                    continue
+            
+            elif isinstance(layer_img, bytes):
+                # 格式 3: 直接的 bytes
+                from io import BytesIO
+                layer_img = Image.open(BytesIO(layer_img))
+                if show_debug:
+                    print(f"  [CONVERT] Layer {i}: bytes → PIL Image {layer_img.size}")
+            
+            # 檢查是否成功轉換為 Image
             if not isinstance(layer_img, Image.Image):
                 if show_debug:
                     print(f"  [SKIP] Layer {i}: Not an Image, type={type(layer_img)}")
