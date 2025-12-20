@@ -140,8 +140,9 @@ def train(config_path):
 
     # Multi-GPU support with DataParallel
     use_multi_gpu = config.get("use_multi_gpu", False)
-    # Save dtype before wrapping (needed for prepare_image and other operations)
+    # Save dtype and config before wrapping (needed for prepare_image and other operations)
     transformer_dtype = pipeline.transformer.dtype
+    transformer_config = pipeline.transformer.config
     if use_multi_gpu and torch.cuda.is_available() and torch.cuda.device_count() > 1:
         num_gpus = torch.cuda.device_count()
         print(f"[INFO] Using {num_gpus} GPUs with DataParallel", flush=True)
@@ -433,7 +434,9 @@ def train(config_path):
 
             # classifier-free guidance
             guidance_scale=config.get('cfg', 4.0)
-            if pipeline.transformer.config.guidance_embeds:
+            # Use saved config if DataParallel wrapped, otherwise access directly
+            model_config = transformer_config if use_multi_gpu else pipeline.transformer.config
+            if model_config.guidance_embeds:
                 guidance = torch.full([1], guidance_scale, device=device, dtype=torch.float32)
                 guidance = guidance.expand(x0.shape[0])
             else:
