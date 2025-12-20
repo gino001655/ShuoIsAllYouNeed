@@ -1,0 +1,31 @@
+seed: 42
+max_layer_num: 52
+
+# --- Paths (Modify these) ---
+data_dir: "/path/to/your/dataset"                                # Dataset root
+pretrained_model_name_or_path: "Path_to_pretrained_FLUX_model"   # Base Flux Model
+pretrained_adapter_path: "Path_to_pretrained_FLUX_adapter"       # Official Adapter
+transp_vae_path: "ckpt/trans_vae/0008000.pt"                     # Transparent VAE
+
+# --- Checkpoint Configuration (Critical) ---
+# These should all point to the SAME checkpoint folder you want to test
+# (either your Prismlayerspro checkpoint, or the new result from resume training)
+
+# 1. Layer Embedding (Base folder)
+layer_ckpt: "/path/to/Prismlayerspro/checkpoint_xxxxxx"
+
+# 2. Transformer LoRA (Inside 'transformer' folder)
+lora_ckpt: "/path/to/Prismlayerspro/checkpoint_xxxxxx/transformer"
+
+# 3. Adapter LoRA (Inside 'adapter' folder)
+adapter_lora_dir: "/path/to/Prismlayerspro/checkpoint_xxxxxx/adapter"
+
+# --- Output ---
+save_dir: "./inference_results_resume_test"
+
+# --- Inference Parameters ---
+cfg: 4.0
+max_layers: 48
+decoder_arch: "vit"
+pos_embedding: "rope"
+layer_embedding: "rope"

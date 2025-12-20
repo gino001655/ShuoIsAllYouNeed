@@ -273,7 +273,7 @@ class DLCVLayoutDataset(Dataset):
         return {
             "pixel_RGBA": pixel_RGBA,
             "pixel_RGB": pixel_RGB,
-            "whole_img": whole_img_RGBA,
+            "whole_img": whole_img_RGB,
             "caption": caption,
             "layout": layout,
             "height": H,

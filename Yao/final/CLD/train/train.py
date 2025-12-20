@@ -212,11 +212,11 @@ def train(config_path):
 
             pixel_RGB = batch["pixel_RGB"].to(device=device, dtype=torch.bfloat16)
             pixel_RGB = pipeline.image_processor.preprocess(pixel_RGB[0])
-            H = int(batch["height"][0])     # By default, only a single sample per batch is allowed (because later the data will be concatenated based on bounding boxes, which have varying lengths)
-            W = int(batch["width"][0])
-            adapter_img = batch["whole_img"][0]
-            caption = batch["caption"][0]
-            layer_boxes = get_input_box(batch["layout"][0])
+            H = int(batch["height"])     # By default, only a single sample per batch is allowed (because later the data will be concatenated based on bounding boxes, which have varying lengths)
+            W = int(batch["width"])
+            adapter_img = batch["whole_img"]
+            caption = batch["caption"]
+            layer_boxes = get_input_box(batch["layout"])
             
             if step == 0 or step % 10 == 0:
                 print(f"[STEP {step}] 數據載入完成 (尺寸: {W}x{H}, 圖層數: {len(layer_boxes)})", flush=True)
@@ -229,12 +229,12 @@ def train(config_path):
                     # Temporarily suppress stdout/stderr to catch truncation messages
                     f = StringIO()
                     with redirect_stdout(f), redirect_stderr(f):
-                prompt_embeds, pooled_prompt_embeds, text_ids = pipeline.encode_prompt(
-                    prompt=caption,
-                    prompt_2=None,
-                    num_images_per_prompt=1,
-                    max_sequence_length=int(config.get("max_sequence_length", 512)),
-                )
+                        prompt_embeds, pooled_prompt_embeds, text_ids = pipeline.encode_prompt(
+                            prompt=caption,
+                            prompt_2=None,
+                            num_images_per_prompt=1,
+                            max_sequence_length=int(config.get("max_sequence_length", 512)),
+                        )
                     
                     # Check if truncation occurred and show simplified message
                     output = f.getvalue()

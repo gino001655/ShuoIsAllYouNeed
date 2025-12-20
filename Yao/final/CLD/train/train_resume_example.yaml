@@ -1,0 +1,25 @@
+seed: 42
+max_layer_num: 52
+num_inference_steps: 28
+
+# --- Paths (Modify these) ---
+data_dir: "/path/to/your/dataset/snapshots/snapshot_1"          # Dataset path
+pretrained_model_name_or_path: "Path_to_pretrained_FLUX_model"   # Base Flux Model
+pretrained_adapter_path: "Path_to_pretrained_FLUX_adapter"       # Official Adapter
+output_dir: "./resume_training_output"                           # Where to save new checkpoints
+
+# --- Resume Configuration (Critical) ---
+# Point this to the folder containing 'transformer/', 'adapter/', and 'layer_pe.pth'
+# Example: "ckpt/decouple_LoRA" or "ckpt/Prismlayerspro/checkpoint_050000"
+resume_from: "/path/to/Prismlayerspro/checkpoint_xxxxxx"
+
+# --- Training Hyperparameters ---
+max_steps: 50000       # Increase this if you want to train for more steps than the original checkpoint
+log_every: 100
+save_every: 1000
+accum_steps: 4
+lora_rank: 64
+lora_alpha: 64
+cfg: 4.0
+optimizer: Prodigy
+adapter_scale: 0.9
