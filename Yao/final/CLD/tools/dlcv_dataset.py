@@ -216,9 +216,19 @@ class DLCVLayoutDataset(Dataset):
         width_list = item["width"]
         height_list = item["height"]
         
+        # Debug: print layer info for first few samples
+        if not hasattr(self, '_layer_debug_count'):
+            self._layer_debug_count = 0
+        if self._layer_debug_count < 3:
+            print(f"[DEBUG] Sample {idx}: Total layers in dataset: {layer_count}")
+            if layer_types:
+                print(f"  Layer types: {layer_types}")
+        
         for i in range(layer_count):
             # Skip background layers (already added as base)
             if layer_types and i < len(layer_types) and layer_types[i] == 3:
+                if self._layer_debug_count < 3:
+                    print(f"  [SKIP] Layer {i}: ColoredBackground (type=3)")
                 continue  # Skip ColoredBackground
             
             # Get layer image
@@ -226,12 +236,18 @@ class DLCVLayoutDataset(Dataset):
             
             if layer_img is None:
                 # If no layer image, skip
+                if self._layer_debug_count < 3:
+                    print(f"  [SKIP] Layer {i}: layer_img is None")
                 continue
             
             # Convert to RGBA
             if not isinstance(layer_img, Image.Image):
-                print(f"[WARNING] Layer {i} 不是圖片: {type(layer_img)}，跳過")
+                if self._layer_debug_count < 3:
+                    print(f"  [SKIP] Layer {i}: Not an Image, type={type(layer_img)}")
                 continue
+            
+            if self._layer_debug_count < 3:
+                print(f"  [ADDED] Layer {i}: Image size={layer_img.size}, bbox=({left_list[i]}, {top_list[i]}, {width_list[i]}, {height_list[i]})")
             
             layer_img_RGBA = layer_img.convert("RGBA")
             layer_img_RGB = rgba2rgb(layer_img_RGBA)
@@ -273,6 +289,12 @@ class DLCVLayoutDataset(Dataset):
         # Stack tensors
         pixel_RGBA = torch.stack(layer_image_RGBA, dim=0)  # [L+2, 4, H, W]
         pixel_RGB = torch.stack(layer_image_RGB, dim=0)    # [L+2, 3, H, W]
+        
+        # Debug: print final layer count
+        if self._layer_debug_count < 3:
+            print(f"  [RESULT] Total layers added: {len(layout)} (including whole_img + background + {len(layout)-2} foreground layers)")
+            print(f"  Layout boxes: {layout}")
+            self._layer_debug_count += 1
         
         return {
             "pixel_RGBA": pixel_RGBA,

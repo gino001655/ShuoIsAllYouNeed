@@ -203,8 +203,18 @@ def inference_layout(config):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     generator = torch.Generator(device=device).manual_seed(config['seed'])
 
+    # Get max samples to process (if specified)
+    max_samples = config.get('max_samples', None)
+    if max_samples is not None:
+        print(f"[INFO] Will process only {max_samples} samples", flush=True)
+
     idx = 0
     for batch in loader:
+        # Check if we've reached max_samples limit
+        if max_samples is not None and idx >= max_samples:
+            print(f"[INFO] Reached max_samples limit ({max_samples}), stopping inference", flush=True)
+            break
+            
         print(f"Processing case {idx}", flush=True)
 
         # collate_fn returns batch[0] directly when batch_size=1, so no need for [0] indexing
