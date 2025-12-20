@@ -11,7 +11,9 @@ import sys
 import os
 from pathlib import Path
 from tqdm import tqdm
-import torch
+from tqdm import tqdm
+# import torch  <-- MOVED INSIDE FUNCTIONS TO PREVENT EARLY CUDA INIT
+from PIL import Image
 from PIL import Image
 from datasets import load_dataset
 import multiprocessing as mp
@@ -58,6 +60,7 @@ class LLaVACaptioner:
         num_beams: int = 1,
         use_device_map_auto: bool = True,
     ):
+        import torch
         self.device = torch.device(device) if isinstance(device, str) else device
         self.prompt = prompt
         self.max_new_tokens = max_new_tokens
@@ -114,9 +117,10 @@ class LLaVACaptioner:
         
         print(f"✅ LLaVA model loaded successfully (conv_mode: {self.conv_mode})")
     
-    @torch.inference_mode()
+    # @torch.inference_mode()  <-- REMOVED DECORATOR because torch is not imported at module level
     def generate_batch(self, images: List[Image.Image]) -> List[str]:
         """Generate captions for a batch of images - TRUE BATCHING."""
+        import torch
         import re
         
         if not images:
@@ -245,6 +249,7 @@ class LLaVACaptioner:
     
     def generate_single(self, image: Image.Image) -> str:
         """Generate caption for a single image."""
+        import torch
         import re
         
         # Prepare query with image token
@@ -437,6 +442,8 @@ def worker_process(
         device = "cuda:0"
         torch.cuda.set_device(0)
         
+        print(f"[DEBUG] Worker {gpu_id}: CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES')}", flush=True)
+        print(f"[DEBUG] Worker {gpu_id}: torch.cuda.device_count()={torch.cuda.device_count()}", flush=True)
         print(f"[GPU {gpu_id}] Initializing LLaVA model on device '{device}' (Physical: {gpu_id})...", flush=True)
         print(f"[GPU {gpu_id}] Current CUDA device: {torch.cuda.current_device()}", flush=True)
         
@@ -659,6 +666,8 @@ def main():
     parser.add_argument("--num_gpus", type=int, default=1, help="Number of GPUs to use for parallel processing")
     parser.add_argument("--gpu_ids", type=str, default=None, help="Comma-separated GPU IDs (e.g., '0,1,2'). If not set, uses 0 to num_gpus-1")
     args = parser.parse_args()
+    
+    import torch  # Re-added local import because top-level was removed
     
     if not LLAVA_AVAILABLE:
         print("❌ LLaVA is not available. Please check your environment.")
