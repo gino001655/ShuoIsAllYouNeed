@@ -9,7 +9,7 @@ import argparse
 from PIL import Image
 from diffusers import FluxTransformer2DModel
 from diffusers.configuration_utils import FrozenDict
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 
 from models.multiLayer_adapter import MultiLayerAdapter
 from models.mmdit import CustomFluxTransformer2DModel
@@ -25,6 +25,27 @@ try:
 except ImportError:
     from tools.dataset import LayoutTrainDataset, collate_fn
     print("[INFO] 自訂資料集模組不存在，使用原始資料集 (dataset.py)")
+
+
+def get_lora_path(lora_dir_or_file):
+    """
+    將 LoRA 目錄路徑或文件路徑轉換為文件路徑。
+    如果輸入是目錄，自動拼接 'pytorch_lora_weights.safetensors'。
+    如果輸入是文件，直接返回。
+    """
+    if os.path.isfile(lora_dir_or_file):
+        return lora_dir_or_file
+    elif os.path.isdir(lora_dir_or_file):
+        lora_file = os.path.join(lora_dir_or_file, "pytorch_lora_weights.safetensors")
+        if os.path.exists(lora_file):
+            return lora_file
+        else:
+            raise FileNotFoundError(
+                f"LoRA directory '{lora_dir_or_file}' does not contain 'pytorch_lora_weights.safetensors'. "
+                f"Please check the path or provide the full file path instead."
+            )
+    else:
+        raise FileNotFoundError(f"LoRA path does not exist: {lora_dir_or_file}")
 
 
 # Initialize pipeline
@@ -67,21 +88,23 @@ def initialize_pipeline(config):
     print("[INFO] Successfully loaded Transformer weights.", flush=True)
 
     # Load LoRA weights
-    if 'pretrained_lora_dir' in config:
-        print("[INFO] Loading LoRA weights...", flush=True)
-        lora_state_dict = CustomFluxPipeline.lora_state_dict(config['pretrained_lora_dir'])
+    if 'pretrained_lora_dir' in config and config['pretrained_lora_dir']:
+        print("[INFO] Loading pretrained LoRA weights...", flush=True)
+        lora_path = get_lora_path(config['pretrained_lora_dir'])
+        lora_state_dict = CustomFluxPipeline.lora_state_dict(lora_path)
         CustomFluxPipeline.load_lora_into_transformer(lora_state_dict, None, transformer)
         transformer.fuse_lora(safe_fusing=True)
         transformer.unload_lora()
-        print("[INFO] Successfully loaded and fused LoRA weights.", flush=True)
+        print("[INFO] Successfully loaded and fused pretrained LoRA weights.", flush=True)
 
-    if 'artplus_lora_dir' in config:
-        print("[INFO] Loading LoRA weights...", flush=True)
-        lora_state_dict = CustomFluxPipeline.lora_state_dict(config['artplus_lora_dir'])
+    if 'artplus_lora_dir' in config and config['artplus_lora_dir']:
+        print("[INFO] Loading artplus LoRA weights...", flush=True)
+        lora_path = get_lora_path(config['artplus_lora_dir'])
+        lora_state_dict = CustomFluxPipeline.lora_state_dict(lora_path)
         CustomFluxPipeline.load_lora_into_transformer(lora_state_dict, None, transformer)
         transformer.fuse_lora(safe_fusing=True)
         transformer.unload_lora()
-        print("[INFO] Successfully loaded and fused LoRA weights.", flush=True)
+        print("[INFO] Successfully loaded and fused artplus LoRA weights.", flush=True)
 
     # Load layer_pe weights
     layer_pe_path = os.path.join(config['layer_ckpt'], "layer_pe.pth")
@@ -101,9 +124,10 @@ def initialize_pipeline(config):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     multiLayer_adapter = MultiLayerAdapter.from_pretrained(config['pretrained_adapter_path']).to(torch.bfloat16).to(device)
     print("[INFO] Successfully loaded MultiLayer-Adapter weights.", flush=True)
-    if 'adapter_lora_dir' in config:
+    if 'adapter_lora_dir' in config and config['adapter_lora_dir']:
         print("[INFO] Loading MultiLayer-Adapter LoRA weights...", flush=True)
-        lora_state_dict = CustomFluxPipeline.lora_state_dict(config['adapter_lora_dir'])
+        lora_path = get_lora_path(config['adapter_lora_dir'])
+        lora_state_dict = CustomFluxPipeline.lora_state_dict(lora_path)
         CustomFluxPipeline.load_lora_into_transformer(lora_state_dict, None, multiLayer_adapter)
         multiLayer_adapter.fuse_lora(safe_fusing=True)
         multiLayer_adapter.unload_lora()
@@ -192,22 +216,63 @@ def inference_layout(config):
 
     pipeline = initialize_pipeline(config)
 
-    # 嘗試載入 dataset，如果 custom_dataset 失敗則 fallback 到原始 dataset
-    if _use_custom_dataset:
-        try:
-            dataset = CustomLayoutTrainDataset(config['data_dir'], split="test")
-            collate_fn = custom_collate_fn
-            print("[INFO] 成功使用自訂資料集 (custom_dataset.py)", flush=True)
-        except (FileNotFoundError, ValueError) as e:
-            print(f"[WARNING] 自訂資料集載入失敗: {e}", flush=True)
-            print("[INFO] 切換到原始資料集 (dataset.py)", flush=True)
+    # 載入 dataset
+    use_indexed_dataset = config.get('use_indexed_dataset', False)
+    enable_dataset_debug = config.get('enable_dataset_debug', False)
+    max_samples = config.get('max_samples', None)
+    
+    print("\n" + "="*60)
+    print("載入推理數據集")
+    print("="*60)
+    
+    if use_indexed_dataset:
+        # 方案 B: 使用 indexed dataset (TAData + caption.json)
+        print(f"[INFO] 使用 DLCVLayoutDatasetIndexed (Index-based caption matching)", flush=True)
+        print(f"[INFO] Data dir: {config['data_dir']}", flush=True)
+        print(f"[INFO] Caption JSON: {config.get('caption_json', 'Not specified')}", flush=True)
+        
+        from tools.dlcv_dataset_indexed import DLCVLayoutDatasetIndexed, collate_fn as indexed_collate_fn
+        
+        if enable_dataset_debug:
+            print(f"[INFO] 🔍 Dataset debug enabled: 將顯示每個樣本的詳細資訊", flush=True)
+        
+        dataset = DLCVLayoutDatasetIndexed(
+            data_dir=config['data_dir'],
+            caption_json_path=config.get('caption_json', None),
+            enable_debug=enable_dataset_debug,
+        )
+        
+        # 限制樣本數量（如果指定）
+        if max_samples is not None and max_samples > 0:
+            print(f"[INFO] 限制樣本數量: {max_samples}", flush=True)
+            # 創建一個子集
+            dataset = Subset(dataset, list(range(min(max_samples, len(dataset)))))
+        
+        loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0, collate_fn=indexed_collate_fn)
+        print(f"[INFO] ✓ 載入 {len(dataset) if not isinstance(dataset, Subset) else len(dataset.indices)} 個推理樣本", flush=True)
+    else:
+        # 方案 A 或原始方案：嘗試載入 dataset，如果 custom_dataset 失敗則 fallback 到原始 dataset
+        if _use_custom_dataset:
+            try:
+                dataset = CustomLayoutTrainDataset(config['data_dir'], split="test")
+                collate_fn = custom_collate_fn
+                print("[INFO] 成功使用自訂資料集 (custom_dataset.py)", flush=True)
+            except (FileNotFoundError, ValueError) as e:
+                print(f"[WARNING] 自訂資料集載入失敗: {e}", flush=True)
+                print("[INFO] 切換到原始資料集 (dataset.py)", flush=True)
+                from tools.dataset import LayoutTrainDataset, collate_fn
+                dataset = LayoutTrainDataset(config['data_dir'], split="test")
+        else:
             from tools.dataset import LayoutTrainDataset, collate_fn
             dataset = LayoutTrainDataset(config['data_dir'], split="test")
-    else:
-        from tools.dataset import LayoutTrainDataset, collate_fn
-        dataset = LayoutTrainDataset(config['data_dir'], split="test")
-    
-    loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0, collate_fn=collate_fn)
+        
+        # 限制樣本數量（如果指定）
+        if max_samples is not None and max_samples > 0:
+            print(f"[INFO] 限制樣本數量: {max_samples}", flush=True)
+            dataset = Subset(dataset, list(range(min(max_samples, len(dataset)))))
+        
+        loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0, collate_fn=collate_fn)
+        print(f"[INFO] ✓ 載入 {len(dataset) if not isinstance(dataset, Subset) else len(dataset.indices)} 個推理樣本", flush=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     generator = torch.Generator(device=device).manual_seed(config['seed'])
