@@ -2,7 +2,7 @@ import os
 # Set CUDA_VISIBLE_DEVICES before importing torch
 # You can modify this or set it via environment variable
 if "CUDA_VISIBLE_DEVICES" not in os.environ:
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 import numpy as np
 import torch
 import argparse
@@ -207,8 +207,9 @@ def inference_layout(config):
     for batch in loader:
         print(f"Processing case {idx}", flush=True)
 
-        height = int(batch["height"][0])
-        width = int(batch["width"][0])
+        # collate_fn returns batch[0] directly when batch_size=1, so no need for [0] indexing
+        height = int(batch["height"])
+        width = int(batch["width"])
         
         # 調整為 16 的倍數（向上取整）- 因為 latent space 需要 /16
         original_height = height
@@ -219,15 +220,15 @@ def inference_layout(config):
         if height != original_height or width != original_width:
             print(f"[INFO] 調整圖片尺寸: {original_height}x{original_width} -> {height}x{width} (必須是 16 的倍數)", flush=True)
         
-        adapter_img = batch["whole_img"][0]
-        caption = batch["caption"][0]
+        adapter_img = batch["whole_img"]
+        caption = batch["caption"]
         
         # 計算尺寸調整比例
         scale_h = height / original_height if original_height > 0 else 1.0
         scale_w = width / original_width if original_width > 0 else 1.0
         
         # 調整 layout 座標以匹配調整後的尺寸
-        original_layout = batch["layout"][0]
+        original_layout = batch["layout"]
         adjusted_layout = []
         for layer_box in original_layout:
             # layer_box 格式: [x1, y1, x2, y2]
