@@ -12,7 +12,7 @@ lora_dropout: 0
 max_steps: 200000
 log_every: 1000
 save_every: 200
-max_sequence_length: 256  # 減少文本長度可以節省 VRAM（從 512 降到 256 可節省約 50% 的 prompt_embeds 記憶體）
+max_sequence_length: 512  # 減少文本長度可以節省 VRAM（從 512 降到 256 可節省約 50% 的 prompt_embeds 記憶體）
 cfg: 4.0
 accum_steps: 2
 optimizer: Prodigy
@@ -40,12 +40,12 @@ unk_skip_min_count: 1
 
 # 大樣本過濾設定（減少 VRAM 消耗）
 skip_large_samples: false  # 設為 true 啟用過濾
-max_layers: 50  # 最大 Layer 數（建議根據統計結果設定，如 95% 百分位數）
-max_image_size: 2048  # 最大圖像尺寸（單邊，單位：px，建議 2048 或 1536）
-max_total_pixels: 4194304  # 最大總像素數（寬×高，2048×2048=4194304，建議根據統計結果設定）
+max_layers: 15  # 最大 Layer 數（建議根據統計結果設定，如 95% 百分位數）
+max_image_size: 1024  # 最大圖像尺寸（單邊，單位：px，建議 2048 或 1536）
+max_total_pixels: 1048576  # 最大總像素數（寬×高，2048×2048=4194304，建議根據統計結果設定）
 
 # Multi-GPU 設定
-use_multi_gpu: true  # 設為 true 啟用 DataParallel（需要 2+ GPUs）
+use_multi_gpu: false  # 設為 true 啟用 DataParallel（需要 2+ GPUs）
 
 # 模型路徑（根據你的環境調整）
 artplus_lora_dir: "/workspace/ShuoIsAllYouNeed/Yao/final/CLD/ckpt/prism_ft_LoRA"
