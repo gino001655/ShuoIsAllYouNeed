@@ -46,6 +46,7 @@ class DLCVLayoutDataset(Dataset):
             split: "train" or "val"
             caption_mapping_path: Optional path to caption mapping JSON file
         """
+        self.data_dir = data_dir  # Save for path remapping
         local_parquet_dir = os.path.join(data_dir, "data")
         local_parquet_files = sorted(glob.glob(os.path.join(local_parquet_dir, "*.parquet")))
         
@@ -89,6 +90,39 @@ class DLCVLayoutDataset(Dataset):
     def __len__(self):
         return len(self.dataset)
     
+    def _fix_image_path(self, image_or_path):
+        """
+        Fix hardcoded image paths in parquet files.
+        If image_or_path is a string path pointing to preprocessed_data,
+        remap it to the actual data_dir location.
+        """
+        if not isinstance(image_or_path, str):
+            return image_or_path  # Already an Image object or None
+        
+        # Check if it's a hardcoded path that needs remapping
+        if "/preprocessed_data/" in image_or_path:
+            # Extract the relative part after "preprocessed_data/"
+            # Example: /workspace/dataset/preprocessed_data/images/train/00017531.png
+            #       -> images/train/00017531.png
+            parts = image_or_path.split("/preprocessed_data/")
+            if len(parts) == 2:
+                relative_path = parts[1]
+                # Construct new path: data_dir + relative_path
+                new_path = os.path.join(self.data_dir, relative_path)
+                
+                if os.path.exists(new_path):
+                    return new_path
+                else:
+                    # Try without the images/ prefix if that doesn't work
+                    # Some datasets might have: data_dir/train/xxx.png
+                    if relative_path.startswith("images/"):
+                        alt_path = os.path.join(self.data_dir, relative_path.replace("images/", "", 1))
+                        if os.path.exists(alt_path):
+                            return alt_path
+        
+        # Return as-is if no remapping needed
+        return image_or_path
+    
     def __getitem__(self, idx):
         # Get preview path and image
         # Strategy: datasets library may convert 'preview' to Image automatically,
@@ -118,10 +152,12 @@ class DLCVLayoutDataset(Dataset):
         elif isinstance(preview_value, str):
             # 格式 2: 字符串路径（如自己生成的 cld_dataset）
             preview_path = preview_value
+            # Fix path if needed
+            fixed_path = self._fix_image_path(preview_path)
             try:
-                preview_img = Image.open(preview_path)
+                preview_img = Image.open(fixed_path)
             except Exception as e:
-                raise ValueError(f"无法打开图片: {preview_path}, 错误: {e}")
+                raise ValueError(f"无法打开图片: {fixed_path} (原路径: {preview_path}), 错误: {e}")
         else:
             raise ValueError(f"preview 欄位格式不支持: {type(preview_value)}")
         
@@ -141,17 +177,30 @@ class DLCVLayoutDataset(Dataset):
         whole_img_RGB = rgba2rgb(whole_img_RGBA)
         
         # Caption: prioritize caption_mapping, fallback to title
-        if self.caption_mapping and preview_path and preview_path in self.caption_mapping:
-            caption = self.caption_mapping[preview_path]
-            # Debug: print for first few samples
-            if not hasattr(self, '_caption_debug_count'):
-                self._caption_debug_count = 0
-            if self._caption_debug_count < 3:
-                print(f"[DEBUG] Sample {idx}: Using caption mapping")
-                print(f"  Path: {preview_path}")
-                print(f"  Caption: {caption[:80]}...")
-                self._caption_debug_count += 1
-        else:
+        caption_found = False
+        if self.caption_mapping and preview_path:
+            # Try original path first
+            if preview_path in self.caption_mapping:
+                caption = self.caption_mapping[preview_path]
+                caption_found = True
+            else:
+                # Try fixed path
+                fixed_preview_path = self._fix_image_path(preview_path)
+                if fixed_preview_path in self.caption_mapping:
+                    caption = self.caption_mapping[fixed_preview_path]
+                    caption_found = True
+            
+            if caption_found:
+                # Debug: print for first few samples
+                if not hasattr(self, '_caption_debug_count'):
+                    self._caption_debug_count = 0
+                if self._caption_debug_count < 3:
+                    print(f"[DEBUG] Sample {idx}: Using caption mapping")
+                    print(f"  Path: {preview_path}")
+                    print(f"  Caption: {caption[:80]}...")
+                    self._caption_debug_count += 1
+        
+        if not caption_found:
             caption = item.get("title", "A design image")
             # Debug
             if not hasattr(self, '_caption_debug_count'):
@@ -182,6 +231,15 @@ class DLCVLayoutDataset(Dataset):
             # Use the first ColoredBackground as base image
             bg_idx = background_indices[0]
             bg_img = item["image"][bg_idx]
+            
+            # Fix path if it's a string
+            if isinstance(bg_img, str):
+                bg_img = self._fix_image_path(bg_img)
+                try:
+                    bg_img = Image.open(bg_img)
+                except Exception as e:
+                    print(f"[WARNING] Cannot load background image: {e}")
+                    bg_img = None
             
             if bg_img is not None and isinstance(bg_img, Image.Image):
                 bg_img_RGBA = bg_img.convert("RGBA")
@@ -239,6 +297,25 @@ class DLCVLayoutDataset(Dataset):
                 if self._layer_debug_count < 3:
                     print(f"  [SKIP] Layer {i}: layer_img is None")
                 continue
+            
+            # Fix path if it's a string (hardcoded path in parquet)
+            if isinstance(layer_img, str):
+                original_path = layer_img
+                layer_img = self._fix_image_path(layer_img)
+                
+                if self._layer_debug_count < 3:
+                    print(f"  [PATH FIX] Layer {i}: {original_path}")
+                    print(f"           -> {layer_img}")
+                
+                # Try to load the image
+                try:
+                    layer_img = Image.open(layer_img)
+                    if self._layer_debug_count < 3:
+                        print(f"           ✓ Successfully loaded image: {layer_img.size}")
+                except Exception as e:
+                    if self._layer_debug_count < 3:
+                        print(f"  [SKIP] Layer {i}: Cannot load image: {e}")
+                    continue
             
             # Convert to RGBA
             if not isinstance(layer_img, Image.Image):
