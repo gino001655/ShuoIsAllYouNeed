@@ -79,9 +79,7 @@ class LLaVACaptioner:
         if use_device_map_auto:
             device_map = "auto" if device == "cuda" else {"": device}
         else:
-            # When auto is off (multi-gpu mode), we MUST bind to the specific device for 4-bit/8-bit loading
-            # Otherwise bitsandbytes might default to cuda:0
-            device_map = {"": device} if device != "cpu" else None
+            device_map = None
         
         self.tokenizer, self.model, self.image_processor, self.context_len = load_pretrained_model(
             model_path=model_path,
@@ -425,16 +423,21 @@ def worker_process(
     """Worker process for a single GPU."""
     try:
         # Import torch first
+        import os
+        # Set CUDA_VISIBLE_DEVICES to the specific physical GPU ID
+        # This isolates the process to only see this GPU, effectively making it "cuda:0"
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
+        
         import torch
         
         if not torch.cuda.is_available():
             raise RuntimeError(f"CUDA not available")
         
-        # Set specific GPU device
-        device = f"cuda:{gpu_id}"
-        torch.cuda.set_device(gpu_id)
+        # Since we isolated the GPU, we always use cuda:0 inside this process
+        device = "cuda:0"
+        torch.cuda.set_device(0)
         
-        print(f"[GPU {gpu_id}] Initializing LLaVA model on device '{device}'...", flush=True)
+        print(f"[GPU {gpu_id}] Initializing LLaVA model on device '{device}' (Physical: {gpu_id})...", flush=True)
         print(f"[GPU {gpu_id}] Current CUDA device: {torch.cuda.current_device()}", flush=True)
         
         # Initialize captioner (must disable device_map="auto" for multi-GPU)
