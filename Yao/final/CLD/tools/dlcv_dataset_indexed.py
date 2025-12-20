@@ -5,6 +5,7 @@ DLCVLayoutDataset with Index-based Caption Matching
 
 import json
 import re
+from io import BytesIO
 from pathlib import Path
 from PIL import Image
 from torch.utils.data import Dataset
@@ -47,7 +48,6 @@ class DLCVLayoutDatasetIndexed(Dataset):
             # Fallback: 直接用 pyarrow 讀取，避免 metadata 解析問題
             print(f"  ⚠️  load_dataset 失敗，使用 pyarrow 直接讀取...")
             import pyarrow.parquet as pq
-            from pathlib import Path
             
             # 找到所有 parquet 文件
             parquet_files = sorted(self.data_dir.glob("*.parquet"))
