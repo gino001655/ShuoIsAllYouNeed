@@ -135,7 +135,9 @@ class CustomFluxPipeline(FluxPipeline):
 
         # Get masked image
         masked_image = image.clone()
-        masked_image[(mask > 0.5).repeat(1, 3, 1, 1)] = -1      # (1, 3, H, W)
+        # Be robust to images that come in as RGBA (4 channels) or RGB (3 channels).
+        # mask is (bs,1,H,W); repeat to match channel count of masked_image.
+        masked_image[(mask > 0.5).repeat(1, masked_image.shape[1], 1, 1)] = -1      # (1, C, H, W)
 
         # Encode to latents
         image_latents = self.vae.encode(masked_image.to(self.vae.dtype)).latent_dist.sample()

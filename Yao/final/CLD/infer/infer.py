@@ -247,6 +247,13 @@ def inference_layout(config):
         adapter_img = batch["whole_img"]
         caption = batch["caption"]
         
+        # Ensure adapter image is RGB (some datasets provide RGBA)
+        try:
+            if hasattr(adapter_img, "mode") and adapter_img.mode == "RGBA":
+                adapter_img = adapter_img.convert("RGB")
+        except Exception:
+            pass
+        
         # 顯示 caption 和圖層詳情
         caption_preview = caption[:150] + '...' if len(caption) > 150 else caption
         print(f"  📝 Caption: {caption_preview}")
