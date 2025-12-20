@@ -16,6 +16,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", message=".*truncated.*")
 warnings.filterwarnings("ignore", message=".*CLIP.*")
+warnings.filterwarnings("ignore", message=".*torch.cpu.amp.autocast.*")
 
 # Suppress PIL and diffusers verbose output
 logging.getLogger("PIL").setLevel(logging.ERROR)
