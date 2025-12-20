@@ -75,11 +75,13 @@ class LLaVACaptioner:
         print(f"📥 Loading LLaVA model from {model_path}...")
         print(f"   Using prompt: \"{prompt}\"")
         
-        # For multiprocessing worker, don't use device_map="auto"
+        # For multiprocessing worker, explicitly map to target device
         if use_device_map_auto:
             device_map = "auto" if device == "cuda" else {"": device}
         else:
-            device_map = None
+            # When auto is off (multi-gpu mode), we MUST bind to the specific device for 4-bit/8-bit loading
+            # Otherwise bitsandbytes might default to cuda:0
+            device_map = {"": device} if device != "cpu" else None
         
         self.tokenizer, self.model, self.image_processor, self.context_len = load_pretrained_model(
             model_path=model_path,
