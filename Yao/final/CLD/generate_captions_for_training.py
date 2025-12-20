@@ -24,22 +24,26 @@ LLAVA_DIR = Path("/tmp2/b12902041/Gino/dlcv-fall-2025-final-project/third_party/
 if str(LLAVA_DIR) not in sys.path:
     sys.path.insert(0, str(LLAVA_DIR))
 
-try:
-    from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN, IMAGE_PLACEHOLDER
-    from llava.conversation import conv_templates, SeparatorStyle
-    from llava.model.builder import load_pretrained_model
-    from llava.utils import disable_torch_init
-    from llava.mm_utils import (
-        process_images,
-        tokenizer_image_token,
-        get_model_name_from_path,
-    )
-    LLAVA_AVAILABLE = True
-except ImportError as e:
-    print(f"❌ Failed to import LLaVA modules: {e}")
-    print(f"   Make sure you're in the correct conda environment (e.g., llava15)")
-    print(f"   and that LLaVA codebase is available at: {LLAVA_DIR}")
-    LLAVA_AVAILABLE = False
+# CRITICAL: DO NOT import LLaVA or torch at module level!
+# These imports trigger CUDA initialization before worker processes can set CUDA_VISIBLE_DEVICES
+# All LLaVA imports are now done inside LLaVACaptioner.__init__()
+LLAVA_AVAILABLE = True  # Assume available, will fail gracefully if not
+# try:
+#     from llava.constants import self.IMAGE_TOKEN_INDEX, self.DEFAULT_IMAGE_TOKEN, self.DEFAULT_IM_START_TOKEN, self.DEFAULT_IM_END_TOKEN, self.IMAGE_PLACEHOLDER
+#     from llava.conversation import self.conv_templates, SeparatorStyle
+#     from llava.model.builder import load_pretrained_model
+#     from llava.utils import disable_torch_init
+#     from llava.mm_utils import (
+#         self.process_images,
+#         self.tokenizer_image_token,
+#         get_model_name_from_path,
+#     )
+#     LLAVA_AVAILABLE = True
+# except ImportError as e:
+#     print(f"❌ Failed to import LLaVA modules: {e}")
+#     print(f"   Make sure you're in the correct conda environment (e.g., llava15)")
+#     print(f"   and that LLaVA codebase is available at: {LLAVA_DIR}")
+#     LLAVA_AVAILABLE = False
 
 
 class LLaVACaptioner:
@@ -60,7 +64,25 @@ class LLaVACaptioner:
         num_beams: int = 1,
         use_device_map_auto: bool = True,
     ):
+        # Import LLaVA and torch INSIDE __init__ to allow CUDA_VISIBLE_DEVICES to be set first
         import torch
+        from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN, IMAGE_PLACEHOLDER
+        from llava.conversation import conv_templates, SeparatorStyle
+        from llava.model.builder import load_pretrained_model
+        from llava.utils import disable_torch_init
+        from llava.mm_utils import process_images, tokenizer_image_token, get_model_name_from_path
+        
+        # Store as instance variables for use in other methods
+        self.IMAGE_TOKEN_INDEX = self.IMAGE_TOKEN_INDEX
+        self.DEFAULT_IMAGE_TOKEN = self.DEFAULT_IMAGE_TOKEN
+        self.DEFAULT_IM_START_TOKEN = self.DEFAULT_IM_START_TOKEN
+        self.DEFAULT_IM_END_TOKEN = self.DEFAULT_IM_END_TOKEN
+        self.IMAGE_PLACEHOLDER = self.IMAGE_PLACEHOLDER
+        self.conv_templates = self.conv_templates
+        SeparatorStyle = SeparatorStyle
+        self.process_images = self.process_images
+        self.tokenizer_image_token = self.tokenizer_image_token
+        
         self.device = torch.device(device) if isinstance(device, str) else device
         self.prompt = prompt
         self.max_new_tokens = max_new_tokens
@@ -134,24 +156,24 @@ class LLaVACaptioner:
         
         # Prepare prompts for all images
         qs = self.prompt
-        image_token_se = DEFAULT_IM_START_TOKEN + DEFAULT_IMAGE_TOKEN + DEFAULT_IM_END_TOKEN
+        image_token_se = self.DEFAULT_IM_START_TOKEN + self.DEFAULT_IMAGE_TOKEN + self.DEFAULT_IM_END_TOKEN
         
-        if IMAGE_PLACEHOLDER in qs:
+        if self.IMAGE_PLACEHOLDER in qs:
             if self.model.config.mm_use_im_start_end:
-                qs = re.sub(IMAGE_PLACEHOLDER, image_token_se, qs)
+                qs = re.sub(self.IMAGE_PLACEHOLDER, image_token_se, qs)
             else:
-                qs = re.sub(IMAGE_PLACEHOLDER, DEFAULT_IMAGE_TOKEN, qs)
+                qs = re.sub(self.IMAGE_PLACEHOLDER, self.DEFAULT_IMAGE_TOKEN, qs)
         else:
             if self.model.config.mm_use_im_start_end:
                 qs = image_token_se + "\n" + qs
             else:
-                qs = DEFAULT_IMAGE_TOKEN + "\n" + qs
+                qs = self.DEFAULT_IMAGE_TOKEN + "\n" + qs
         
         # Create conversation for each image
         convs = []
         prompt_texts = []
         for _ in images:
-            conv = conv_templates[self.conv_mode].copy()
+            conv = self.conv_templates[self.conv_mode].copy()
             conv.append_message(conv.roles[0], qs)
             conv.append_message(conv.roles[1], None)
             prompt_texts.append(conv.get_prompt())
@@ -159,7 +181,7 @@ class LLaVACaptioner:
         
         # Process all images
         image_sizes = [img.size for img in images]
-        images_tensor = process_images(
+        images_tensor = self.process_images(
             images,
             self.image_processor,
             self.model.config
@@ -174,10 +196,10 @@ class LLaVACaptioner:
         # Tokenize all prompts
         input_ids_list = []
         for prompt_text in prompt_texts:
-            input_ids = tokenizer_image_token(
+            input_ids = self.tokenizer_image_token(
                 prompt_text, 
                 self.tokenizer, 
-                IMAGE_TOKEN_INDEX, 
+                self.IMAGE_TOKEN_INDEX, 
                 return_tensors="pt"
             )
             # Ensure it's 2D
@@ -254,28 +276,28 @@ class LLaVACaptioner:
         
         # Prepare query with image token
         qs = self.prompt
-        image_token_se = DEFAULT_IM_START_TOKEN + DEFAULT_IMAGE_TOKEN + DEFAULT_IM_END_TOKEN
+        image_token_se = self.DEFAULT_IM_START_TOKEN + self.DEFAULT_IMAGE_TOKEN + self.DEFAULT_IM_END_TOKEN
         
-        if IMAGE_PLACEHOLDER in qs:
+        if self.IMAGE_PLACEHOLDER in qs:
             if self.model.config.mm_use_im_start_end:
-                qs = re.sub(IMAGE_PLACEHOLDER, image_token_se, qs)
+                qs = re.sub(self.IMAGE_PLACEHOLDER, image_token_se, qs)
             else:
-                qs = re.sub(IMAGE_PLACEHOLDER, DEFAULT_IMAGE_TOKEN, qs)
+                qs = re.sub(self.IMAGE_PLACEHOLDER, self.DEFAULT_IMAGE_TOKEN, qs)
         else:
             if self.model.config.mm_use_im_start_end:
                 qs = image_token_se + "\n" + qs
             else:
-                qs = DEFAULT_IMAGE_TOKEN + "\n" + qs
+                qs = self.DEFAULT_IMAGE_TOKEN + "\n" + qs
         
         # Get conversation template
-        conv = conv_templates[self.conv_mode].copy()
+        conv = self.conv_templates[self.conv_mode].copy()
         conv.append_message(conv.roles[0], qs)
         conv.append_message(conv.roles[1], None)
         prompt_text = conv.get_prompt()
         
         # Process image (ensure it's on the correct device)
         image_sizes = [image.size]
-        images_tensor = process_images(
+        images_tensor = self.process_images(
             [image],
             self.image_processor,
             self.model.config
@@ -289,7 +311,7 @@ class LLaVACaptioner:
         
         # Tokenize
         input_ids = (
-            tokenizer_image_token(prompt_text, self.tokenizer, IMAGE_TOKEN_INDEX, return_tensors="pt")
+            self.tokenizer_image_token(prompt_text, self.tokenizer, self.IMAGE_TOKEN_INDEX, return_tensors="pt")
             .unsqueeze(0)
             .to(self.device)
         )
