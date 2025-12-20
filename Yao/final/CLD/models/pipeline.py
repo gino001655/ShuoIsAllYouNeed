@@ -169,6 +169,12 @@ class CustomFluxPipeline(FluxPipeline):
     
     def set_multiLayerAdapter(self, multiLayerAdapter):
         self.multiLayerAdapter = multiLayerAdapter
+    
+    def _get_transformer_config(self):
+        """Safely get transformer config, handling DataParallel wrapping."""
+        if isinstance(self.transformer, torch.nn.DataParallel):
+            return self.transformer.module.config
+        return self.transformer.config
 
     @torch.no_grad()
     def __call__(
@@ -314,7 +320,7 @@ class CustomFluxPipeline(FluxPipeline):
         )
 
         # 4. Prepare latent variables
-        num_channels_latents = self.transformer.config.in_channels // 4
+        num_channels_latents = self._get_transformer_config().in_channels // 4
         latents, latent_image_ids = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_layers,
@@ -350,7 +356,7 @@ class CustomFluxPipeline(FluxPipeline):
         self._num_timesteps = len(timesteps)
 
         # handle guidance
-        if self.transformer.config.guidance_embeds:
+        if self._get_transformer_config().guidance_embeds:
             guidance = torch.full([1], guidance_scale, device=device, dtype=torch.float32)
             guidance = guidance.expand(latents.shape[0])
         else:
@@ -605,8 +611,10 @@ class CustomFluxPipelineCfgLayer(CustomFluxPipeline):
         )
 
         # 3. Prepare image
-        num_channels_latents = self.transformer.config.in_channels // 4
-        if isinstance(self.multiLayerAdapter, MultiLayerAdapter):
+        num_channels_latents = self._get_transformer_config().in_channels // 4
+        # Handle DataParallel wrapping for isinstance check
+        adapter_to_check = self.multiLayerAdapter.module if isinstance(self.multiLayerAdapter, torch.nn.DataParallel) else self.multiLayerAdapter
+        if isinstance(adapter_to_check, MultiLayerAdapter):
             adapter_image, _, _ = self.prepare_image(
                 image=adapter_image,
                 width=width,
@@ -614,11 +622,11 @@ class CustomFluxPipelineCfgLayer(CustomFluxPipeline):
                 batch_size=batch_size * num_images_per_prompt,
                 num_images_per_prompt=num_images_per_prompt,
                 device=device,
-                dtype=self.transformer.dtype,
+                dtype=self._get_transformer_dtype(),
             )
 
         # 4. Prepare latent variables
-        num_channels_latents = self.transformer.config.in_channels // 4
+        num_channels_latents = self._get_transformer_config().in_channels // 4
         latents, latent_image_ids = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_layers,
@@ -654,7 +662,7 @@ class CustomFluxPipelineCfgLayer(CustomFluxPipeline):
         self._num_timesteps = len(timesteps)
 
         # handle guidance
-        if self.transformer.config.guidance_embeds:
+        if self._get_transformer_config().guidance_embeds:
             guidance = torch.full([1], guidance_scale, device=device, dtype=torch.float32)
             guidance = guidance.expand(latents.shape[0])
         else:
@@ -695,11 +703,11 @@ class CustomFluxPipelineCfgLayer(CustomFluxPipeline):
                     pooled_projections=pooled_prompt_embeds,
                     encoder_hidden_states=prompt_embeds,
                     adapter_block_samples=[
-                        sample.to(dtype=self.transformer.dtype)
+                        sample.to(dtype=self._get_transformer_dtype())
                         for sample in adapter_block_samples
                     ],
                     adapter_single_block_samples=[
-                        sample.to(dtype=self.transformer.dtype)
+                        sample.to(dtype=self._get_transformer_dtype())
                         for sample in adapter_single_block_samples
                     ] if adapter_single_block_samples is not None else adapter_single_block_samples,
                     txt_ids=text_ids,
@@ -716,11 +724,11 @@ class CustomFluxPipelineCfgLayer(CustomFluxPipeline):
                     pooled_projections=neg_pooled_prompt_embeds,
                     encoder_hidden_states=neg_prompt_embeds,
                     adapter_block_samples=[
-                        sample.to(dtype=self.transformer.dtype)
+                        sample.to(dtype=self._get_transformer_dtype())
                         for sample in adapter_block_samples
                     ],
                     adapter_single_block_samples=[
-                        sample.to(dtype=self.transformer.dtype)
+                        sample.to(dtype=self._get_transformer_dtype())
                         for sample in adapter_single_block_samples
                     ] if adapter_single_block_samples is not None else adapter_single_block_samples,
                     txt_ids=neg_text_ids,

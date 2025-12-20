@@ -379,6 +379,7 @@ def train(config_path):
                             prompt_2=None,
                             num_images_per_prompt=1,
                             max_sequence_length=int(config.get("max_sequence_length", 512)),
+                            device=device,  # Explicitly pass device to avoid _execution_device access issues
                         )
                     
                     # Check if truncation occurred and show simplified message
