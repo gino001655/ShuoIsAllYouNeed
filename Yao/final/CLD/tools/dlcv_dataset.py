@@ -84,22 +84,88 @@ class DLCVLayoutDataset(Dataset):
             print(f"[INFO] 載入 caption mapping: {len(self.caption_mapping)} 個 captions (path-based)")
             print(f"[INFO] 建立 index-based mapping: {len(self.caption_mapping_indexed)} 個 captions")
         
-        # Load all parquet files
+        # Load all parquet files (with pyarrow fallback for metadata issues)
         datasets_list = []
-        for pf in local_parquet_files:
-            ds = load_dataset("parquet", data_files=pf)["train"]
-            datasets_list.append(ds)
+        use_pyarrow_fallback = False
         
-        full_dataset = concatenate_datasets(datasets_list)
+        for pf in local_parquet_files:
+            try:
+                ds = load_dataset("parquet", data_files=pf)["train"]
+                datasets_list.append(ds)
+            except (TypeError, KeyError) as e:
+                # Metadata error - use pyarrow fallback
+                if not use_pyarrow_fallback:
+                    print(f"[INFO] ⚠️  load_dataset 失敗，使用 pyarrow 直接讀取...")
+                    use_pyarrow_fallback = True
+                
+                import pyarrow.parquet as pq
+                table = pq.read_table(str(pf))
+                
+                # Convert to list of dicts
+                rows = []
+                for i in range(len(table)):
+                    row = {col: table[col][i].as_py() for col in table.column_names}
+                    rows.append(row)
+                
+                # Create a simple Dataset-like object
+                class SimpleDataset:
+                    def __init__(self, data):
+                        self.data = data
+                    def __len__(self):
+                        return len(self.data)
+                    def __getitem__(self, idx):
+                        return self.data[idx]
+                
+                datasets_list.append(SimpleDataset(rows))
+        
+        # Concatenate datasets
+        if use_pyarrow_fallback:
+            # Simple concatenation for list-based datasets
+            all_rows = []
+            for ds in datasets_list:
+                if hasattr(ds, 'data'):
+                    all_rows.extend(ds.data)
+                else:
+                    all_rows.extend([ds[i] for i in range(len(ds))])
+            
+            class SimpleDataset:
+                def __init__(self, data):
+                    self.data = data
+                def __len__(self):
+                    return len(self.data)
+                def __getitem__(self, idx):
+                    return self.data[idx]
+            
+            full_dataset = SimpleDataset(all_rows)
+        else:
+            full_dataset = concatenate_datasets(datasets_list)
         
         # Split train/val (90/10)
         total_len = len(full_dataset)
         idx_90 = int(total_len * 0.9)
         
-        if split == "train":
-            self.dataset = full_dataset.select(range(0, idx_90))
+        if hasattr(full_dataset, 'select'):
+            # HuggingFace Dataset
+            if split == "train":
+                self.dataset = full_dataset.select(range(0, idx_90))
+            else:
+                self.dataset = full_dataset.select(range(idx_90, total_len))
         else:
-            self.dataset = full_dataset.select(range(idx_90, total_len))
+            # SimpleDataset (pyarrow fallback)
+            if split == "train":
+                selected_data = full_dataset.data[0:idx_90]
+            else:
+                selected_data = full_dataset.data[idx_90:total_len]
+            
+            class SimpleDataset:
+                def __init__(self, data):
+                    self.data = data
+                def __len__(self):
+                    return len(self.data)
+                def __getitem__(self, idx):
+                    return self.data[idx]
+            
+            self.dataset = SimpleDataset(selected_data)
         
         self.to_tensor = T.ToTensor()
         
