@@ -384,6 +384,15 @@ def train(config_path):
                     print(f"[SKIP] step={step} sample_idx={sample_idx} unk_count={unk_count} -> skip training this sample", flush=True)
                     continue
             
+            # 獲取樣本識別資訊
+            sample_idx = batch.get("idx", None)
+            sample_id_str = f"index={sample_idx}" if sample_idx is not None else "unknown"
+            
+            # 每個 step 都顯示基本信息
+            num_layers_actual = len(layer_boxes)
+            total_pixels = W * H
+            print(f"[STEP {step}] 處理樣本: {sample_id_str} | 尺寸: {W}×{H} px ({total_pixels:,} px²) | 層數: {num_layers_actual}", flush=True)
+            
             # 顯示詳細資訊（每 10 步或第 0 步）
             if step == 0 or step % 10 == 0:
                 print(f"\n{'='*60}")

@@ -5,11 +5,11 @@ seed: 42
 max_layer_num: 52
 num_inference_steps: 28
 
-lora_rank: 32
-lora_alpha: 32
+lora_rank: 64
+lora_alpha: 64
 lora_dropout: 0
 
-max_steps: 200000
+max_steps: 20000
 log_every: 1000
 save_every: 200
 max_sequence_length: 512  # 減少文本長度可以節省 VRAM（從 512 降到 256 可節省約 50% 的 prompt_embeds 記憶體）
