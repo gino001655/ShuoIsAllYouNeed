@@ -191,6 +191,21 @@ class DLCVLayoutDataset(Dataset):
                 if fixed_preview_path in self.caption_mapping:
                     caption = self.caption_mapping[fixed_preview_path]
                     caption_found = True
+                else:
+                    # Try converting path prefix for cross-machine compatibility
+                    # /tmp2/b12902041/Gino/preprocessed_data -> /workspace/dataset/preprocessed_data
+                    # /workspace/dataset/preprocessed_data -> /tmp2/b12902041/Gino/preprocessed_data
+                    alt_paths = []
+                    if '/tmp2/b12902041/Gino/' in preview_path:
+                        alt_paths.append(preview_path.replace('/tmp2/b12902041/Gino/', '/workspace/dataset/'))
+                    if '/workspace/dataset/' in preview_path:
+                        alt_paths.append(preview_path.replace('/workspace/dataset/', '/tmp2/b12902041/Gino/'))
+                    
+                    for alt_path in alt_paths:
+                        if alt_path in self.caption_mapping:
+                            caption = self.caption_mapping[alt_path]
+                            caption_found = True
+                            break
             
             if caption_found:
                 # Debug: print for first few samples
@@ -295,11 +310,49 @@ class DLCVLayoutDataset(Dataset):
             # Get layer image
             layer_img = layer_images[i]
             
+            # If layer_img is None, crop from preview image using bbox
             if layer_img is None:
-                # If no layer image, skip
                 if show_debug:
-                    print(f"  [SKIP] Layer {i}: layer_img is None")
-                continue
+                    print(f"  [CROP] Layer {i}: No separate image, will crop from preview")
+                
+                # Get bbox for this layer
+                x = int(left_list[i])
+                y = int(top_list[i])
+                w = int(width_list[i])
+                h = int(height_list[i])
+                
+                # Validate bbox
+                if w <= 0 or h <= 0:
+                    if show_debug:
+                        print(f"  [SKIP] Layer {i}: Invalid bbox size (w={w}, h={h})")
+                    continue
+                
+                # Crop from whole image
+                try:
+                    x1, y1 = x, y
+                    x2, y2 = x + w, y + h
+                    
+                    # Ensure bbox is within image bounds
+                    x1 = max(0, min(x1, whole_img_RGBA.width))
+                    y1 = max(0, min(y1, whole_img_RGBA.height))
+                    x2 = max(0, min(x2, whole_img_RGBA.width))
+                    y2 = max(0, min(y2, whole_img_RGBA.height))
+                    
+                    if x2 <= x1 or y2 <= y1:
+                        if show_debug:
+                            print(f"  [SKIP] Layer {i}: Invalid crop region ({x1},{y1},{x2},{y2})")
+                        continue
+                    
+                    # Crop the region
+                    layer_img = whole_img_RGBA.crop((x1, y1, x2, y2))
+                    
+                    if show_debug:
+                        print(f"  [CROP] Layer {i}: Cropped {layer_img.size} from preview at bbox=({x},{y},{w},{h})")
+                
+                except Exception as e:
+                    if show_debug:
+                        print(f"  [SKIP] Layer {i}: Cannot crop from preview: {e}")
+                    continue
             
             # Fix path if it's a string (hardcoded path in parquet)
             if isinstance(layer_img, str):

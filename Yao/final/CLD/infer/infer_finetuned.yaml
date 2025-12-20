@@ -7,7 +7,9 @@ cfg: 4.0
 adapter_scale: 0.9
 
 # Dataset directory for inference
-data_dir: "/workspace/dataset/cld_dataset/snapshots/snapshot_1"
+data_dir: "/tmp2/b12902041/Gino/cld_dataset/snapshots/snapshot_1"
+caption_mapping: "/tmp2/b12902041/Gino/ShuoIsAllYouNeed/Yao/final/CLD/caption_llava16_final.json"
+max_samples: 5  # 先測試 5 個樣本
 
 # Base models (same paths as training)
 pretrained_model_name_or_path: "flux_model"

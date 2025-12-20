@@ -149,5 +149,22 @@ python generate_captions_for_training.py \
     --data_dir /tmp2/b12902041/Gino/cld_dataset/snapshots/snapshot_1/data \
     --output caption_mapping_full.json \
     --max_samples 10
-    --batch_size 8
     --prompt "Precisely describe style, subjects, text, and especially the graphic design and background of the whole image in simple but detailed sentences."
+
+python generate_captions_parallel.py \
+    --data_dir /tmp2/b12902041/Gino/cld_dataset/snapshots/snapshot_1/data \
+    --output caption_mapping_full.json \
+    --max_samples 10
+    --batch_size 8
+
+---
+# 完整轉換 TAData + LLaVA captions
+python convert_tadata_with_captions.py \
+    --input_dir /tmp2/b12902041/Gino/TAData/DLCV_dataset/data \
+    --output_dir /tmp2/b12902041/Gino/TAData_with_llava_captions \
+    --caption_json /tmp2/b12902041/Gino/ShuoIsAllYouNeed/Yao/final/CLD/caption_llava16_final.json
+
+# 驗證轉換結果
+python verify_converted_dataset.py \
+    --data_dir /tmp2/b12902041/Gino/TAData_with_llava_captions \
+    --num_samples 5
