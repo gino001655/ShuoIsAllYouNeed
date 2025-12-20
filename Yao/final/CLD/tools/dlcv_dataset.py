@@ -39,14 +39,16 @@ class DLCVLayoutDataset(Dataset):
     - height, width: image dimensions
     """
     
-    def __init__(self, data_dir, split="train", caption_mapping_path=None):
+    def __init__(self, data_dir, split="train", caption_mapping_path=None, enable_debug=True):
         """
         Args:
             data_dir: Directory containing parquet files in {data_dir}/data/*.parquet
             split: "train" or "val"
             caption_mapping_path: Optional path to caption mapping JSON file
+            enable_debug: If True, print debug info for first few samples (default: True for backwards compatibility)
         """
         self.data_dir = data_dir  # Save for path remapping
+        self.enable_debug = enable_debug
         local_parquet_dir = os.path.join(data_dir, "data")
         local_parquet_files = sorted(glob.glob(os.path.join(local_parquet_dir, "*.parquet")))
         
@@ -194,7 +196,7 @@ class DLCVLayoutDataset(Dataset):
                 # Debug: print for first few samples
                 if not hasattr(self, '_caption_debug_count'):
                     self._caption_debug_count = 0
-                if self._caption_debug_count < 3:
+                if self.enable_debug and self._caption_debug_count < 3:
                     print(f"[DEBUG] Sample {idx}: Using caption mapping")
                     print(f"  Path: {preview_path}")
                     print(f"  Caption: {caption[:80]}...")
@@ -205,7 +207,7 @@ class DLCVLayoutDataset(Dataset):
             # Debug
             if not hasattr(self, '_caption_debug_count'):
                 self._caption_debug_count = 0
-            if self._caption_debug_count < 3:
+            if self.enable_debug and self._caption_debug_count < 3:
                 print(f"[DEBUG] Sample {idx}: Using default title")
                 print(f"  Path from arrow: {preview_path}")
                 print(f"  Path in mapping keys: {preview_path in self.caption_mapping if self.caption_mapping else 'No mapping'}")
@@ -277,7 +279,8 @@ class DLCVLayoutDataset(Dataset):
         # Debug: print layer info for first few samples
         if not hasattr(self, '_layer_debug_count'):
             self._layer_debug_count = 0
-        if self._layer_debug_count < 3:
+        show_debug = self.enable_debug and self._layer_debug_count < 3
+        if show_debug:
             print(f"[DEBUG] Sample {idx}: Total layers in dataset: {layer_count}")
             if layer_types:
                 print(f"  Layer types: {layer_types}")
@@ -285,7 +288,7 @@ class DLCVLayoutDataset(Dataset):
         for i in range(layer_count):
             # Skip background layers (already added as base)
             if layer_types and i < len(layer_types) and layer_types[i] == 3:
-                if self._layer_debug_count < 3:
+                if show_debug:
                     print(f"  [SKIP] Layer {i}: ColoredBackground (type=3)")
                 continue  # Skip ColoredBackground
             
@@ -294,7 +297,7 @@ class DLCVLayoutDataset(Dataset):
             
             if layer_img is None:
                 # If no layer image, skip
-                if self._layer_debug_count < 3:
+                if show_debug:
                     print(f"  [SKIP] Layer {i}: layer_img is None")
                 continue
             
@@ -303,27 +306,27 @@ class DLCVLayoutDataset(Dataset):
                 original_path = layer_img
                 layer_img = self._fix_image_path(layer_img)
                 
-                if self._layer_debug_count < 3:
+                if show_debug:
                     print(f"  [PATH FIX] Layer {i}: {original_path}")
                     print(f"           -> {layer_img}")
                 
                 # Try to load the image
                 try:
                     layer_img = Image.open(layer_img)
-                    if self._layer_debug_count < 3:
+                    if show_debug:
                         print(f"           ✓ Successfully loaded image: {layer_img.size}")
                 except Exception as e:
-                    if self._layer_debug_count < 3:
+                    if show_debug:
                         print(f"  [SKIP] Layer {i}: Cannot load image: {e}")
                     continue
             
             # Convert to RGBA
             if not isinstance(layer_img, Image.Image):
-                if self._layer_debug_count < 3:
+                if show_debug:
                     print(f"  [SKIP] Layer {i}: Not an Image, type={type(layer_img)}")
                 continue
             
-            if self._layer_debug_count < 3:
+            if show_debug:
                 print(f"  [ADDED] Layer {i}: Image size={layer_img.size}, bbox=({left_list[i]}, {top_list[i]}, {width_list[i]}, {height_list[i]})")
             
             layer_img_RGBA = layer_img.convert("RGBA")
@@ -368,7 +371,7 @@ class DLCVLayoutDataset(Dataset):
         pixel_RGB = torch.stack(layer_image_RGB, dim=0)    # [L+2, 3, H, W]
         
         # Debug: print final layer count
-        if self._layer_debug_count < 3:
+        if show_debug:
             print(f"  [RESULT] Total layers added: {len(layout)} (including whole_img + background + {len(layout)-2} foreground layers)")
             print(f"  Layout boxes: {layout}")
             self._layer_debug_count += 1

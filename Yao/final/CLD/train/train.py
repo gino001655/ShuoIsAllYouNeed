@@ -170,20 +170,32 @@ def train(config_path):
 
     # 嘗試使用 DLCVLayoutDataset（適用於 DLCV 格式數據，支持 caption mapping）
     caption_mapping_path = config.get('caption_mapping', None)
+    enable_dataset_debug = config.get('enable_dataset_debug', True)  # 默認啟用，顯示前幾個樣本的載入情況
+    
     try:
         from tools.dlcv_dataset import DLCVLayoutDataset, collate_fn as dlcv_collate_fn
+        print(f"[INFO] 使用 DLCVLayoutDataset（DLCV 格式）", flush=True)
+        if enable_dataset_debug:
+            print(f"[INFO] Dataset debug enabled: will show details for first few samples", flush=True)
         dataset = DLCVLayoutDataset(
             data_dir=config['data_dir'],
             split="train",
-            caption_mapping_path=caption_mapping_path
+            caption_mapping_path=caption_mapping_path,
+            enable_debug=enable_dataset_debug
         )
         loader = DataLoader(dataset, batch_size=1, shuffle=True, num_workers=0, collate_fn=dlcv_collate_fn)
-        print(f"[INFO] 使用 DLCVLayoutDataset（DLCV 格式）", flush=True)
         if caption_mapping_path:
             print(f"[INFO] 使用 LLaVA 生成的 captions: {caption_mapping_path}", flush=True)
     except Exception as e:
         print(f"[INFO] DLCVLayoutDataset 失敗，回退到 LayoutTrainDataset: {e}", flush=True)
-        dataset = LayoutTrainDataset(data_dir = config['data_dir'], split="train")
+        print(f"[INFO] 使用 LayoutTrainDataset（PrismLayersPro 格式）", flush=True)
+        if enable_dataset_debug:
+            print(f"[INFO] Dataset debug enabled: will show details for first few samples", flush=True)
+        dataset = LayoutTrainDataset(
+            data_dir=config['data_dir'], 
+            split="train",
+            enable_debug=enable_dataset_debug
+        )
         loader = DataLoader(dataset, batch_size=1, shuffle=True, num_workers=0, collate_fn=collate_fn)
 
     max_steps = int(config.get("max_steps", 1000))
