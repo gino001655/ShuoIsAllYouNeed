@@ -25,4 +25,4 @@ resume_from: "/workspace/ShuoIsAllYouNeed/Yao/final/CLD/ckpt/decouple_LoRA"
 pretrained_model_name_or_path: "flux_model"
 pretrained_adapter_path: "Path_to_pretrained_FLUX_adapter"
 pretrained_lora_dir: "ckpt/pre_trained_LoRA"
-output_dir: "FT_on_Crello_ckp
+output_dir: "FT_on_Crello_ckpt"

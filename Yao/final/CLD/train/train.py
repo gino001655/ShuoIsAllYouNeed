@@ -211,7 +211,7 @@ def train(config_path):
                 print(f"[STEP {step}] 載入 batch 數據...", flush=True)
 
             pixel_RGB = batch["pixel_RGB"].to(device=device, dtype=torch.bfloat16)
-            pixel_RGB = pipeline.image_processor.preprocess(pixel_RGB[0])
+            pixel_RGB = pipeline.image_processor.preprocess(pixel_RGB)
             H = int(batch["height"])     # By default, only a single sample per batch is allowed (because later the data will be concatenated based on bounding boxes, which have varying lengths)
             W = int(batch["width"])
             adapter_img = batch["whole_img"]
