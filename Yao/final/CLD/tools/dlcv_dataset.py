@@ -126,9 +126,13 @@ class DLCVLayoutDataset(Dataset):
             raise ValueError(f"preview 欄位格式不支持: {type(preview_value)}")
         
         # Canvas size (from metadata, not from image size)
+        # Canvas size (from metadata, not from image size)
         canvas_W = item.get("canvas_width", preview_img.width)
         canvas_H = item.get("canvas_height", preview_img.height)
-        W, H = canvas_W, canvas_H
+
+        # Force dimensions to be multiples of 16 to avoid mismatches between VAE grid and quantized boxes
+        W = ((canvas_W + 15) // 16) * 16
+        H = ((canvas_H + 15) // 16) * 16
         
         # Convert to RGBA and resize to canvas size if needed
         whole_img_RGBA = preview_img.convert("RGBA")
