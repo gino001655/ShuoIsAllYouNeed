@@ -40,7 +40,7 @@ unk_skip_min_count: 1
 
 # 大樣本過濾設定（減少 VRAM 消耗）
 skip_large_samples: false  # 設為 true 啟用過濾
-max_layers: 15  # 最大 Layer 數（建議根據統計結果設定，如 95% 百分位數）
+max_layers: 10  # 最大 Layer 數（建議根據統計結果設定，如 95% 百分位數）
 max_image_size: 1024  # 最大圖像尺寸（單邊，單位：px，建議 2048 或 1536）
 max_total_pixels: 1048576  # 最大總像素數（寬×高，2048×2048=4194304，建議根據統計結果設定）
 
