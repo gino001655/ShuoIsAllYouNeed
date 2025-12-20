@@ -140,6 +140,8 @@ def train(config_path):
 
     # Multi-GPU support with DataParallel
     use_multi_gpu = config.get("use_multi_gpu", False)
+    # Save dtype before wrapping (needed for prepare_image and other operations)
+    transformer_dtype = pipeline.transformer.dtype
     if use_multi_gpu and torch.cuda.is_available() and torch.cuda.device_count() > 1:
         num_gpus = torch.cuda.device_count()
         print(f"[INFO] Using {num_gpus} GPUs with DataParallel", flush=True)
@@ -393,6 +395,8 @@ def train(config_path):
                     print(f"[STEP {step}] 文本編碼完成", flush=True)
                     print(f"[STEP {step}] 開始 Adapter 圖像編碼...", flush=True)
 
+                # Get dtype: if DataParallel wrapped, use saved dtype; otherwise use model.dtype
+                model_dtype = transformer_dtype if use_multi_gpu else pipeline.transformer.dtype
                 adapter_image, _, _ = pipeline.prepare_image(
                     image=adapter_img,
                     width=W,
@@ -400,7 +404,7 @@ def train(config_path):
                     batch_size=1,
                     num_images_per_prompt=1,
                     device=device,
-                    dtype=pipeline.transformer.dtype,
+                    dtype=model_dtype,
                 )
 
             if step == 0 or step % 10 == 0:
@@ -462,14 +466,16 @@ def train(config_path):
             if step == 0 or step % 10 == 0:
                 print(f"[STEP {step}] MultiLayer Adapter 完成，開始 Transformer (DiT) 前向傳播...", flush=True)
 
+            # Get dtype: if DataParallel wrapped, use saved dtype; otherwise use model.dtype
+            model_dtype = transformer_dtype if use_multi_gpu else pipeline.transformer.dtype
             v_pred = pipeline.transformer(
                 hidden_states=xt,
                 adapter_block_samples=[
-                    sample.to(dtype=pipeline.transformer.dtype)
+                    sample.to(dtype=model_dtype)
                     for sample in adapter_block_samples
                 ],
                 adapter_single_block_samples=[
-                    sample.to(dtype=pipeline.transformer.dtype)
+                    sample.to(dtype=model_dtype)
                     for sample in adapter_single_block_samples
                 ] if adapter_single_block_samples is not None else adapter_single_block_samples,
                 list_layer_box=layer_boxes,
