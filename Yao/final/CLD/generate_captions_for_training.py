@@ -506,7 +506,10 @@ def worker_process(
             except Exception as e_batch:
                 # If batch fails, try one by one as fallback or just fail all
                 # Fallback to single processing to isolate the error
-                print(f"[GPU {gpu_id}] Batch failed, falling back to single processing for this batch...", flush=True)
+                print(f"[GPU {gpu_id}] Batch failed with error: {type(e_batch).__name__}: {str(e_batch)}", flush=True)
+                print(f"[GPU {gpu_id}] Falling back to single processing for this batch...", flush=True)
+                import traceback
+                traceback.print_exc()
                 for i, img in enumerate(current_batch_images):
                     original_idx = current_batch_indices[i]
                     img_path = image_paths[original_idx]
@@ -514,6 +517,7 @@ def worker_process(
                         single_caption = captioner.generate(img)
                         results.append((img_path, single_caption, None))
                     except Exception as e_single:
+                        print(f"[GPU {gpu_id}] Single processing also failed for {img_path}: {str(e_single)}", flush=True)
                         results.append((img_path, None, str(e_single)))
 
         # Main loop
