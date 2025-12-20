@@ -12,10 +12,16 @@ lora_dropout: 0
 max_steps: 200000
 log_every: 1000
 save_every: 200
-max_sequence_length: 512
+max_sequence_length: 256  # 減少文本長度可以節省 VRAM（從 512 降到 256 可節省約 50% 的 prompt_embeds 記憶體）
 cfg: 4.0
 accum_steps: 2
 optimizer: Prodigy
+
+# VRAM 優化設定
+enable_memory_cleanup: true  # 啟用記憶體清理（釋放中間變數，清理碎片）
+# 圖像縮放（可選，進一步減少 VRAM）
+# resize_training_images: false  # 設為 true 啟用圖像縮放
+# max_training_image_size: 1536  # 訓練時最大圖像尺寸（單邊，單位：px）
 
 adapter_scale: 0.9
 

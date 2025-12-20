@@ -144,11 +144,20 @@ def train(config_path):
     transformer_dtype = pipeline.transformer.dtype
     transformer_config = pipeline.transformer.config
     
+    # CRITICAL: DataParallel cannot work with batch_size=1 and complex input structures
+    # (variable-length sequences, multi-layer latents) - it will cause tensor size mismatches
+    batch_size = 1  # Current training uses batch_size=1
+    if use_multi_gpu and torch.cuda.is_available() and torch.cuda.device_count() > 1:
+        if batch_size == 1:
+            print(f"[WARNING] DataParallel is incompatible with batch_size=1 and complex input structures.", flush=True)
+            print(f"[WARNING] DataParallel will cause tensor size mismatches in rotary embeddings.", flush=True)
+            print(f"[WARNING] Disabling DataParallel. For multi-GPU training, use DDP or increase batch_size.", flush=True)
+            use_multi_gpu = False
+    
     if use_multi_gpu and torch.cuda.is_available() and torch.cuda.device_count() > 1:
         num_gpus = torch.cuda.device_count()
         print(f"[INFO] Using {num_gpus} GPUs with DataParallel", flush=True)
-        print(f"[INFO] Note: DataParallel will replicate the model on each GPU", flush=True)
-        print(f"[INFO] For batch_size=1, DataParallel may not provide speedup but will use all GPUs", flush=True)
+        print(f"[INFO] Note: DataParallel requires batch_size > 1 to work correctly", flush=True)
         
         # Wrap models with DataParallel
         # Use device_ids to explicitly specify which GPUs to use
@@ -440,6 +449,11 @@ def train(config_path):
                 prompt_embeds = prompt_embeds.to(device=device, dtype=torch.bfloat16)   # (1, 512, 4096)
                 pooled_prompt_embeds = pooled_prompt_embeds.to(device=device, dtype=torch.bfloat16)     # (1, 768)
                 text_ids = text_ids.to(device=device, dtype=torch.bfloat16)  # (512, 3)
+                
+                # VRAM 優化：如果啟用了記憶體清理，在編碼後清理
+                enable_memory_cleanup = config.get("enable_memory_cleanup", True)
+                if enable_memory_cleanup and torch.cuda.is_available():
+                    torch.cuda.empty_cache()
 
                 if step == 0 or step % 10 == 0:
                     print(f"[STEP {step}] 文本編碼完成", flush=True)
@@ -467,6 +481,11 @@ def train(config_path):
             if step == 0 or step % 10 == 0:
                 print(f"[STEP {step}] VAE 編碼完成 (latent shape: {x0.shape})", flush=True)
                 print(f"[STEP {step}] 準備噪聲和 timestep...", flush=True)
+
+            # VRAM 優化：釋放 pixel_RGB（已經編碼成 x0）
+            enable_memory_cleanup = config.get("enable_memory_cleanup", True)
+            if enable_memory_cleanup:
+                del pixel_RGB
 
             x1 = torch.randn_like(x0)
             image_seq_len = latent_image_ids.shape[0]
@@ -543,6 +562,11 @@ def train(config_path):
 
             if step == 0 or step % 10 == 0:
                 print(f"[STEP {step}] Transformer 前向傳播完成，計算 loss...", flush=True)
+            
+            # VRAM 優化：釋放 adapter samples（不再需要）
+            enable_memory_cleanup = config.get("enable_memory_cleanup", True)
+            if enable_memory_cleanup:
+                del adapter_block_samples, adapter_single_block_samples
 
             # MSE（masked）
             mse = (v_pred - v_star) ** 2
@@ -568,6 +592,15 @@ def train(config_path):
                 
                 if step == 0 or step % 10 == 0:
                     print(f"[STEP {step}] 權重更新完成！", flush=True)
+                
+                # VRAM 優化：在 optimizer step 後清理記憶體
+                enable_memory_cleanup = config.get("enable_memory_cleanup", True)
+                if enable_memory_cleanup:
+                    # 釋放不再需要的中間變數
+                    del mse
+                    # 清理記憶體碎片
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
 
             step += 1
             if step % log_every == 0:
