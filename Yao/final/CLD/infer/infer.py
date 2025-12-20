@@ -132,14 +132,28 @@ def initialize_pipeline(config):
 
 # Calculate layer boxes
 def get_input_box(layer_boxes):
+    """
+    Convert layer boxes to quantized format (aligned to 16-pixel boundaries).
+    Uses correct ceiling division: ((val + 15) // 16) * 16
+    """
     list_layer_box = []
     for layer_box in layer_boxes:
+        if layer_box is None or len(layer_box) < 4:
+            list_layer_box.append(None)
+            continue
         min_row, max_row = layer_box[1], layer_box[3]
         min_col, max_col = layer_box[0], layer_box[2]
+        # Downward quantization (floor to 16)
         quantized_min_row = (min_row // 16) * 16
         quantized_min_col = (min_col // 16) * 16
-        quantized_max_row = ((max_row // 16) + 1) * 16
-        quantized_max_col = ((max_col // 16) + 1) * 16
+        # Upward quantization (ceiling to 16) - correct way
+        quantized_max_row = ((max_row + 15) // 16) * 16
+        quantized_max_col = ((max_col + 15) // 16) * 16
+        
+        # Ensure valid box after quantization
+        if quantized_max_col <= quantized_min_col or quantized_max_row <= quantized_min_row:
+            list_layer_box.append(None)
+            continue
 
         list_layer_box.append((quantized_min_col, quantized_min_row, quantized_max_col, quantized_max_row))
     return list_layer_box
@@ -206,15 +220,40 @@ def inference_layout(config):
         caption = batch["caption"][0]
         
         # Build layer boxes and filter out invalid (zero-area) boxes to prevent model crash
-        # (Same logic as training)
+        # This is critical: invalid boxes cause RuntimeError in mmdit.py's fill_in_processed_tokens
         raw_layer_boxes = get_input_box(batch["layout"][0])
         layer_boxes = []
         for box in raw_layer_boxes:
             if box is None or len(box) < 4:
                 continue
             x1, y1, x2, y2 = box[:4]
-            if (x2 - x1) > 0 and (y2 - y1) > 0:
-                layer_boxes.append(box)
+            # Check: box must have positive area
+            if (x2 - x1) <= 0 or (y2 - y1) <= 0:
+                continue
+            # Check: after quantization (divide by 16 in model), box must still have positive area
+            # Model does: x1, y1, x2, y2 = x1 // 16, y1 // 16, x2 // 16, y2 // 16
+            quantized_x1, quantized_y1 = x1 // 16, y1 // 16
+            quantized_x2, quantized_y2 = x2 // 16, y2 // 16
+            if (quantized_x2 - quantized_x1) <= 0 or (quantized_y2 - quantized_y1) <= 0:
+                continue
+            # Check: box must be within canvas bounds (with some tolerance for quantization)
+            # Note: get_input_box already quantized, so boxes should be roughly in bounds
+            # But we check anyway for safety
+            if x1 < 0 or y1 < 0 or x2 > width or y2 > height:
+                # Clamp to canvas bounds
+                x1 = max(0, min(x1, width))
+                y1 = max(0, min(y1, height))
+                x2 = max(x1, min(x2, width))
+                y2 = max(y1, min(y2, height))
+                if (x2 - x1) <= 0 or (y2 - y1) <= 0:
+                    continue
+                # Re-check quantization after clamping (box is already quantized, but ensure it's still valid)
+                quantized_x1_after, quantized_y1_after = x1 // 16, y1 // 16
+                quantized_x2_after, quantized_y2_after = x2 // 16, y2 // 16
+                if (quantized_x2_after - quantized_x1_after) <= 0 or (quantized_y2_after - quantized_y1_after) <= 0:
+                    continue
+                box = (x1, y1, x2, y2)
+            layer_boxes.append(box)
         
         if len(layer_boxes) == 0:
             print(f"[WARN] Sample {idx}: No valid layer boxes after filtering; skip", flush=True)
@@ -225,7 +264,7 @@ def inference_layout(config):
             print(
                 f"[WARN] Sample {idx}: Filtered invalid boxes: {len(raw_layer_boxes)} -> {len(layer_boxes)}",
                 flush=True,
-            ) 
+            )
 
         # Generate layers using pipeline
         x_hat, image, latents = pipeline(

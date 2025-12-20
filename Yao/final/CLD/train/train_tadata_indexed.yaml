@@ -11,10 +11,10 @@ lora_dropout: 0
 
 max_steps: 200000
 log_every: 1000
-save_every: 1000
+save_every: 200
 max_sequence_length: 512
 cfg: 4.0
-accum_steps: 4
+accum_steps: 2
 optimizer: Prodigy
 
 adapter_scale: 0.9
