@@ -14,7 +14,7 @@ pretrained_model_name_or_path: "flux_model"
 pretrained_adapter_path: "Path_to_pretrained_FLUX_adapter"
 
 # Transparent VAE (optional, only if using transparency)
-transp_vae_path: "ckpt/trans_vae"
+transp_vae_path: "ckpt/trans_vae/0008000.pth"
 
 # Base pre-trained LoRA (same as training)
 pretrained_lora_dir: "ckpt/pre_trained_LoRA"
