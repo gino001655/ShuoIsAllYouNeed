@@ -136,12 +136,10 @@ def get_input_box(layer_boxes):
     for layer_box in layer_boxes:
         min_row, max_row = layer_box[1], layer_box[3]
         min_col, max_col = layer_box[0], layer_box[2]
-        # 向下取整到 16 的倍數
         quantized_min_row = (min_row // 16) * 16
         quantized_min_col = (min_col // 16) * 16
-        # 向上取整到 16 的倍數（正確的方式）
-        quantized_max_row = ((max_row + 15) // 16) * 16
-        quantized_max_col = ((max_col + 15) // 16) * 16
+        quantized_max_row = ((max_row // 16) + 1) * 16
+        quantized_max_col = ((max_col // 16) + 1) * 16
 
         list_layer_box.append((quantized_min_col, quantized_min_row, quantized_max_col, quantized_max_row))
     return list_layer_box
@@ -180,148 +178,54 @@ def inference_layout(config):
 
     pipeline = initialize_pipeline(config)
 
-    # 嘗試載入 dataset，支持 indexed dataset (方案 B)
-    # Check if using indexed dataset (for TAData with caption.json)
-    if config.get('use_indexed_dataset', False):
-        print("[INFO] Using DLCVLayoutDatasetIndexed (index-based caption matching)", flush=True)
-        from tools.dlcv_dataset_indexed import DLCVLayoutDatasetIndexed, collate_fn
-        dataset = DLCVLayoutDatasetIndexed(
-            data_dir=config['data_dir'],
-            caption_json_path=config.get('caption_json', None),
-            enable_debug=config.get('enable_dataset_debug', False),
-        )
-    elif _use_custom_dataset:
+    # 嘗試載入 dataset，如果 custom_dataset 失敗則 fallback 到原始 dataset
+    if _use_custom_dataset:
         try:
             dataset = CustomLayoutTrainDataset(config['data_dir'], split="test")
             collate_fn = custom_collate_fn
-            print("[INFO] Using CustomLayoutTrainDataset (custom_dataset.py)", flush=True)
+            print("[INFO] 成功使用自訂資料集 (custom_dataset.py)", flush=True)
         except (FileNotFoundError, ValueError) as e:
-            print(f"[WARNING] Custom dataset load failed: {e}", flush=True)
-            print("[INFO] Fallback to DLCVLayoutDataset", flush=True)
-            from tools.dlcv_dataset import DLCVLayoutDataset, collate_fn
-            dataset = DLCVLayoutDataset(config['data_dir'], split="val") # Inference usually on val or test
+            print(f"[WARNING] 自訂資料集載入失敗: {e}", flush=True)
+            print("[INFO] 切換到原始資料集 (dataset.py)", flush=True)
+            from tools.dataset import LayoutTrainDataset, collate_fn
+            dataset = LayoutTrainDataset(config['data_dir'], split="test")
     else:
-        # Default to DLCVLayoutDataset for this project
-        from tools.dlcv_dataset import DLCVLayoutDataset, collate_fn
-        print("[INFO] Using DLCVLayoutDataset (tools.dlcv_dataset)", flush=True)
-        dataset = DLCVLayoutDataset(config['data_dir'], split="val")
-    
+    dataset = LayoutTrainDataset(config['data_dir'], split="test")
     loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0, collate_fn=collate_fn)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     generator = torch.Generator(device=device).manual_seed(config['seed'])
 
-    # Get max samples to process (if specified)
-    max_samples = config.get('max_samples', None)
-    if max_samples is not None:
-        print(f"[INFO] Will process only {max_samples} samples", flush=True)
-
     idx = 0
     for batch in loader:
-        # Check if we've reached max_samples limit
-        if max_samples is not None and idx >= max_samples:
-            print(f"[INFO] Reached max_samples limit ({max_samples}), stopping inference", flush=True)
-            break
-            
-        print(f"\n{'='*60}")
-        print(f"處理樣本 {idx}")
-        print(f"{'='*60}")
+        print(f"Processing case {idx}", flush=True)
 
-        # collate_fn returns batch[0] directly when batch_size=1, so no need for [0] indexing
-        height = int(batch["height"])
-        width = int(batch["width"])
+        height = int(batch["height"][0])
+        width = int(batch["width"][0])
+        adapter_img = batch["whole_img"][0]
+        caption = batch["caption"][0]
         
-        # 顯示樣本資訊
-        print(f"  📊 Canvas 尺寸: {width} x {height}")
-        print(f"  🎨 圖層數量: {len(batch['layout'])}")
+        # Build layer boxes and filter out invalid (zero-area) boxes to prevent model crash
+        # (Same logic as training)
+        raw_layer_boxes = get_input_box(batch["layout"][0])
+        layer_boxes = []
+        for box in raw_layer_boxes:
+            if box is None or len(box) < 4:
+                continue
+            x1, y1, x2, y2 = box[:4]
+            if (x2 - x1) > 0 and (y2 - y1) > 0:
+                layer_boxes.append(box)
         
-        # 調整為 16 的倍數（向上取整）- 因為 latent space 需要 /16
-        original_height = height
-        original_width = width
-        height = ((height + 15) // 16) * 16  # 向上取整到最近的 16 的倍數
-        width = ((width + 15) // 16) * 16     # 向上取整到最近的 16 的倍數
-        
-        if height != original_height or width != original_width:
-            print(f"[INFO] 調整圖片尺寸: {original_height}x{original_width} -> {height}x{width} (必須是 16 的倍數)", flush=True)
-        
-        adapter_img = batch["whole_img"]
-        caption = batch["caption"]
-        
-        # Ensure adapter image is RGB (some datasets provide RGBA)
-        try:
-            if hasattr(adapter_img, "mode") and adapter_img.mode == "RGBA":
-                adapter_img = adapter_img.convert("RGB")
-        except Exception:
-            pass
-        
-        # 顯示 caption 和圖層詳情
-        caption_preview = caption[:150] + '...' if len(caption) > 150 else caption
-        print(f"  📝 Caption: {caption_preview}")
-        print(f"  📏 Caption 長度: {len(caption)} 字元")
-        
-        # 顯示前 5 個圖層的資訊
-        print(f"  🖼️  圖層詳情:")
-        for i, layer in enumerate(batch["layout"][:5]):
-            # 支援兩種 layout 格式：
-            # - dict: {'left','top','width','height','type'}
-            # - list/tuple: [x1, y1, x2, y2]
-            if isinstance(layer, dict):
-                print(
-                    f"    Layer {i}: "
-                    f"bbox=({layer['left']:.0f}, {layer['top']:.0f}, {layer['width']:.0f}, {layer['height']:.0f}), "
-                    f"type={layer.get('type', 'unknown')}"
-                )
-            elif isinstance(layer, (list, tuple)) and len(layer) >= 4:
-                x1, y1, x2, y2 = layer[:4]
-                w = x2 - x1
-                h = y2 - y1
-                print(
-                    f"    Layer {i}: "
-                    f"bbox=({x1:.0f}, {y1:.0f}, {w:.0f}, {h:.0f}) "
-                    f"[x1,y1,x2,y2]=({x1:.0f},{y1:.0f},{x2:.0f},{y2:.0f})"
-                )
-            else:
-                print(f"    Layer {i}: (unknown format) type={type(layer)} value={layer}")
-        if len(batch["layout"]) > 5:
-            print(f"    ... 還有 {len(batch['layout']) - 5} 個圖層")
-        print(f"{'='*60}\n")
-        
-        # 計算尺寸調整比例
-        scale_h = height / original_height if original_height > 0 else 1.0
-        scale_w = width / original_width if original_width > 0 else 1.0
-        
-        # 調整 layout 座標以匹配調整後的尺寸
-        # Normalize layout to boxes: [x1,y1,x2,y2]
-        original_layout = []
-        for layer in batch["layout"]:
-            if isinstance(layer, dict):
-                x1 = float(layer["left"])
-                y1 = float(layer["top"])
-                x2 = x1 + float(layer["width"])
-                y2 = y1 + float(layer["height"])
-                original_layout.append([x1, y1, x2, y2])
-            else:
-                original_layout.append(layer)
-        adjusted_layout = []
-        for layer_box in original_layout:
-            # layer_box 格式: [x1, y1, x2, y2]
-            x1, y1, x2, y2 = layer_box
-            # 按比例調整座標（四捨五入以保持精度）
-            adjusted_x1 = round(x1 * scale_w)
-            adjusted_y1 = round(y1 * scale_h)
-            adjusted_x2 = round(x2 * scale_w)
-            adjusted_y2 = round(y2 * scale_h)
-            
-            adjusted_layout.append([adjusted_x1, adjusted_y1, adjusted_x2, adjusted_y2])
-        
-        # 使用調整後的 layout 計算 layer_boxes
-        layer_boxes = get_input_box(adjusted_layout)
-        # Filter invalid (zero-area) boxes to avoid downstream crashes
-        layer_boxes = [b for b in layer_boxes if b and (b[2] - b[0]) > 0 and (b[3] - b[1]) > 0]
         if len(layer_boxes) == 0:
-            print(f"[WARN] No valid layer boxes after filtering; skip sample {idx}", flush=True)
+            print(f"[WARN] Sample {idx}: No valid layer boxes after filtering; skip", flush=True)
             idx += 1
             continue
+        
+        if len(layer_boxes) != len(raw_layer_boxes):
+            print(
+                f"[WARN] Sample {idx}: Filtered invalid boxes: {len(raw_layer_boxes)} -> {len(layer_boxes)}",
+                flush=True,
+            ) 
 
         # Generate layers using pipeline
         x_hat, image, latents = pipeline(
@@ -350,46 +254,29 @@ def inference_layout(config):
         # Save whole image_RGBA (X_hat[0]) and background_RGBA (X_hat[1])
         whole_image_layer = (x_hat[0].permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
         whole_image_rgba_image = Image.fromarray(whole_image_layer, "RGBA")
-        # Resize back to original size if needed
-        if height != original_height or width != original_width:
-            whole_image_rgba_image = whole_image_rgba_image.resize((original_width, original_height), Image.LANCZOS)
         whole_image_rgba_image.save(os.path.join(case_dir, "whole_image_rgba.png"))
 
         adapter_img.save(os.path.join(case_dir, "origin.png"))
 
         background_layer = (x_hat[1].permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
         background_rgba_image = Image.fromarray(background_layer, "RGBA")
-        # Resize back to original size if needed
-        if height != original_height or width != original_width:
-            background_rgba_image = background_rgba_image.resize((original_width, original_height), Image.LANCZOS)
         background_rgba_image.save(os.path.join(case_dir, "background_rgba.png"))
 
         x_hat = x_hat[2:]
         merged_image = image[1]
         image = image[2:]
-        
-        # Resize merged_image if needed (before compositing layers)
-        if height != original_height or width != original_width:
-            merged_image = merged_image.resize((original_width, original_height), Image.LANCZOS)
 
         # Save transparent VAE decoded results
         for layer_idx in range(x_hat.shape[0]):
             layer = x_hat[layer_idx]
             rgba_layer = (layer.permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
             rgba_image = Image.fromarray(rgba_layer, "RGBA")
-            # Resize back to original size if needed
-            if height != original_height or width != original_width:
-                rgba_image = rgba_image.resize((original_width, original_height), Image.LANCZOS)
             rgba_image.save(os.path.join(case_dir, f"layer_{layer_idx}_rgba.png"))
 
         # Composite background and foreground layers
         for layer_idx in range(x_hat.shape[0]):
-            layer = x_hat[layer_idx]
-            rgba_layer = (layer.permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
+            rgba_layer = (x_hat[layer_idx].permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
             layer_image = Image.fromarray(rgba_layer, "RGBA")
-            # Resize back to original size if needed
-            if height != original_height or width != original_width:
-                layer_image = layer_image.resize((original_width, original_height), Image.LANCZOS)
             merged_image = Image.alpha_composite(merged_image.convert('RGBA'), layer_image)
         
         # Save final composite images

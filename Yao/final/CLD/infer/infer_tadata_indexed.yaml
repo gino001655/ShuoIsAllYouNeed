@@ -24,3 +24,4 @@ adapter_lora_dir: "Path_to_save_training_ckpt/adapter"
 
 # 輸出目錄
 save_dir: "output_newnewnew"
+

@@ -138,6 +138,21 @@ def train(config_path):
     n_trainable_adapter = sum(p.numel() for p in pipeline.multiLayerAdapter.parameters() if p.requires_grad)
     print(f"[INFO] LoRA injected. Transformer Trainable params: {n_trainable/1e6:.2f}M; MultiLayer-Adapter Trainable params: {n_trainable_adapter/1e6:.2f}M", flush=True)
 
+    # Multi-GPU support with DataParallel
+    use_multi_gpu = config.get("use_multi_gpu", False)
+    if use_multi_gpu and torch.cuda.is_available() and torch.cuda.device_count() > 1:
+        num_gpus = torch.cuda.device_count()
+        print(f"[INFO] Using {num_gpus} GPUs with DataParallel", flush=True)
+        # Wrap models with DataParallel
+        pipeline.transformer = torch.nn.DataParallel(pipeline.transformer)
+        pipeline.multiLayerAdapter = torch.nn.DataParallel(pipeline.multiLayerAdapter)
+        # Update device to cuda:0 (DataParallel will handle distribution)
+        device = torch.device("cuda:0")
+        print(f"[INFO] Models wrapped with DataParallel on {num_gpus} GPUs", flush=True)
+    else:
+        if torch.cuda.is_available():
+            print(f"[INFO] Using single GPU: {device}", flush=True)
+
     print("[INFO] Using Prodigy optimizer.", flush=True)
     params = [p for p in pipeline.transformer.parameters() if p.requires_grad]
     params_adapter = [p for p in pipeline.multiLayerAdapter.parameters() if p.requires_grad]

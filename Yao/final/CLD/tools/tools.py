@@ -19,8 +19,12 @@ def save_checkpoint(transformer, multiLayer_adater, optimizer, optimizer_adapter
     os.makedirs(trans_dir, exist_ok=True)
     os.makedirs(adapter_dir, exist_ok=True)
 
-    flux_transformer_lora_state_dict = get_peft_model_state_dict(transformer)
-    flux_adapter_lora_state_dict = get_peft_model_state_dict(multiLayer_adater)
+    # Handle DataParallel: unwrap if needed
+    transformer_model = transformer.module if isinstance(transformer, torch.nn.DataParallel) else transformer
+    adapter_model = multiLayer_adater.module if isinstance(multiLayer_adater, torch.nn.DataParallel) else multiLayer_adater
+
+    flux_transformer_lora_state_dict = get_peft_model_state_dict(transformer_model)
+    flux_adapter_lora_state_dict = get_peft_model_state_dict(adapter_model)
 
     flux_transformer_lora_state_dict = {k: v.to(torch.float32) for k, v in flux_transformer_lora_state_dict.items()}
     flux_adapter_lora_state_dict = {k: v.to(torch.float32) for k, v in flux_adapter_lora_state_dict.items()}
@@ -36,7 +40,7 @@ def save_checkpoint(transformer, multiLayer_adater, optimizer, optimizer_adapter
         safe_serialization=True,
     )
 
-    torch.save({"layer_pe": transformer.layer_pe.detach().cpu().to(torch.float32)}, os.path.join(ckpt_dir, "layer_pe.pth"))
+    torch.save({"layer_pe": transformer_model.layer_pe.detach().cpu().to(torch.float32)}, os.path.join(ckpt_dir, "layer_pe.pth"))
 
     torch.save(optimizer.state_dict(), os.path.join(trans_dir, "optimizer.bin"))
     torch.save(optimizer_adapter.state_dict(), os.path.join(adapter_dir, "optimizer.bin"))
@@ -67,21 +71,25 @@ def load_checkpoint(transformer, multiLayer_adater, optimizer, optimizer_adapter
     adapter_dir = os.path.join(ckpt_dir, "adapter")
     start_step = 0
 
+    # Handle DataParallel: unwrap if needed
+    transformer_model = transformer.module if isinstance(transformer, torch.nn.DataParallel) else transformer
+    adapter_model = multiLayer_adater.module if isinstance(multiLayer_adater, torch.nn.DataParallel) else multiLayer_adater
+
     lora_path = os.path.join(trans_dir, "pytorch_lora_weights.safetensors")
     lora_path_adapter = os.path.join(adapter_dir, "pytorch_lora_weights.safetensors")
     if os.path.exists(lora_path):
         lora_state_dict = CustomFluxPipeline.lora_state_dict(lora_path)
-        CustomFluxPipeline.load_lora_into_transformer(lora_state_dict, None, transformer)
+        CustomFluxPipeline.load_lora_into_transformer(lora_state_dict, None, transformer_model)
         print("[INFO] Loaded LoRA weights.")
     if os.path.exists(lora_path_adapter):
         lora_state_dict = CustomFluxPipeline.lora_state_dict(lora_path_adapter)
-        CustomFluxPipeline.load_lora_into_transformer(lora_state_dict, None, multiLayer_adater)
+        CustomFluxPipeline.load_lora_into_transformer(lora_state_dict, None, adapter_model)
         print("[INFO] Loaded LoRA weights.")
 
     pe_path = os.path.join(ckpt_dir, "layer_pe.pth")
     if os.path.exists(pe_path):
-        layer_pe = torch.load(pe_path)
-        missing_keys, unexpected_keys = transformer.load_state_dict(layer_pe, strict=False)
+        layer_pe = torch.load(pe_path, map_location=device)
+        missing_keys, unexpected_keys = transformer_model.load_state_dict(layer_pe, strict=False)
 
     opt_path = os.path.join(trans_dir, "optimizer.bin")
     opt_path_adapter = os.path.join(adapter_dir, "optimizer.bin")
