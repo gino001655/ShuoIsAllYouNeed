@@ -281,14 +281,23 @@ def inference_layout(config):
     for batch in loader:
         print(f"Processing case {idx}", flush=True)
 
-        height = int(batch["height"][0])
-        width = int(batch["width"][0])
-        adapter_img = batch["whole_img"][0]
-        caption = batch["caption"][0]
+        # Handle different collate_fn formats automatically:
+        # - Some collate_fn return single sample dict (batch_size=1): batch["height"] is int
+        # - Some collate_fn return dict with lists: batch["height"] is list
+        # Auto-detect by checking if height is a list
+        def get_batch_value(key):
+            """Get value from batch, handling both list and direct value formats."""
+            value = batch[key]
+            if isinstance(value, (list, tuple)) and len(value) > 0:
+                return value[0]
+            return value
         
-        # Build layer boxes and filter out invalid (zero-area) boxes to prevent model crash
-        # This is critical: invalid boxes cause RuntimeError in mmdit.py's fill_in_processed_tokens
-        raw_layer_boxes = get_input_box(batch["layout"][0])
+        height = int(get_batch_value("height"))
+        width = int(get_batch_value("width"))
+        adapter_img = get_batch_value("whole_img")
+        caption = get_batch_value("caption")
+        layout = get_batch_value("layout")
+        raw_layer_boxes = get_input_box(layout)
         layer_boxes = []
         for box in raw_layer_boxes:
             if box is None or len(box) < 4:
