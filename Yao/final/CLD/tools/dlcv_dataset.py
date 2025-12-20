@@ -279,12 +279,19 @@ class DLCVLayoutDataset(Dataset):
         caption_found = False
         
         # If preview is Image object (TAData), use index-based matching
-        if isinstance(preview, Image.Image) and self.caption_mapping_indexed:
+        if isinstance(preview_img, Image.Image) and self.caption_mapping_indexed:
             if idx in self.caption_mapping_indexed:
                 caption = self.caption_mapping_indexed[idx]
                 caption_found = True
-                if show_debug:
-                    print(f"[CAPTION] From index {idx}: {caption[:100]}...")
+                # Debug: print for first few samples
+                if not hasattr(self, '_caption_debug_count'):
+                    self._caption_debug_count = 0
+                if self.enable_debug and self._caption_debug_count < 3:
+                    print(f"[DEBUG] Sample {idx}: Using index-based caption mapping")
+                    if preview_path:
+                        print(f"  Path: {preview_path}")
+                    print(f"  Caption: {caption[:80]}...")
+                    self._caption_debug_count += 1
         
         # Otherwise use path-based matching
         if not caption_found and self.caption_mapping and preview_path:
@@ -356,14 +363,27 @@ class DLCVLayoutDataset(Dataset):
             bg_idx = background_indices[0]
             bg_img = item["image"][bg_idx]
             
-            # Fix path if it's a string
-            if isinstance(bg_img, str):
-                bg_img = self._fix_image_path(bg_img)
-                try:
+            # Decode background image in multiple formats (str / dict / bytes / PIL)
+            try:
+                if isinstance(bg_img, str):
+                    bg_img = self._fix_image_path(bg_img)
                     bg_img = Image.open(bg_img)
-                except Exception as e:
-                    print(f"[WARNING] Cannot load background image: {e}")
-                    bg_img = None
+                elif isinstance(bg_img, dict):
+                    if 'bytes' in bg_img and bg_img['bytes']:
+                        from io import BytesIO
+                        bg_img = Image.open(BytesIO(bg_img['bytes']))
+                    elif 'path' in bg_img and bg_img['path']:
+                        bg_path = self._fix_image_path(bg_img['path'])
+                        bg_img = Image.open(bg_path)
+                    else:
+                        bg_img = None
+                elif isinstance(bg_img, (bytes, bytearray)):
+                    from io import BytesIO
+                    bg_img = Image.open(BytesIO(bg_img))
+                # else: keep as-is (PIL.Image.Image or None)
+            except Exception as e:
+                print(f"[WARNING] Cannot load background image: {e}")
+                bg_img = None
             
             if bg_img is not None and isinstance(bg_img, Image.Image):
                 bg_img_RGBA = bg_img.convert("RGBA")
