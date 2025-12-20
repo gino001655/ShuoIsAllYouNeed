@@ -68,3 +68,4 @@ if 'image' in sample:
                 print(f"✓ Path exists: {first_img}")
             else:
                 print(f"✗ Path does NOT exist: {first_img}")
+

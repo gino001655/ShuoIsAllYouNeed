@@ -82,3 +82,4 @@ if 'image' in sample:
         elif first_img is None:
             print("❌ TAData DOES NOT have layer images (all None)")
             print("💡 Need to crop from preview like cld_dataset")
+

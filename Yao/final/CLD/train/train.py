@@ -284,7 +284,7 @@ def train(config_path):
                 for i, layer in enumerate(batch["layout"][:5]):  # 只顯示前 5 個圖層
                     print(f"    Layer {i}: bbox=({layer['left']:.0f}, {layer['top']:.0f}, {layer['width']:.0f}, {layer['height']:.0f}), type={layer.get('type', 'unknown')}")
                 if len(batch["layout"]) > 5:
-                    print(f"    ... 還有 {len(batch["layout"]) - 5} 個圖層")
+                    print(f"    ... 還有 {len(batch['layout']) - 5} 個圖層")
                 
                 # 顯示 caption（截斷顯示）
                 caption_preview = caption[:150] + '...' if len(caption) > 150 else caption

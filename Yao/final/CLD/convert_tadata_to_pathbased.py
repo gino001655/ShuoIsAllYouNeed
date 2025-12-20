@@ -142,3 +142,4 @@ if __name__ == "__main__":
         output_dir=args.output_dir,
         images_output_dir=args.images_dir,
     )
+

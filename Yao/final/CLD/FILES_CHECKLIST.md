@@ -245,3 +245,4 @@ cat DEPLOYMENT_INFO.txt
 3. ✅ 看到所有詳細資訊（Caption、Canvas、Layers）
 
 **開始使用！** 🚀
+

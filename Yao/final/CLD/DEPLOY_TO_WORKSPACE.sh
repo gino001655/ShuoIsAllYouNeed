@@ -96,3 +96,4 @@ echo "  chmod +x quick_test_plan_b.sh"
 echo "  ./quick_test_plan_b.sh"
 echo ""
 echo -e "${GREEN}開始使用！${NC} 🚀"
+

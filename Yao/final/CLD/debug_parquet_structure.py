@@ -135,3 +135,4 @@ if 'image' in sample:
         elif isinstance(images[0], Image.Image):
             print("✓ Layer images are stored as Image objects")
             print("💡 Should work directly")
+

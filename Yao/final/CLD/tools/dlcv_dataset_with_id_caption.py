@@ -243,3 +243,4 @@ class DLCVLayoutDatasetWithIDCaption(Dataset):
 def collate_fn(batch):
     """Simple collate function."""
     return batch[0] if len(batch) == 1 else batch
+
