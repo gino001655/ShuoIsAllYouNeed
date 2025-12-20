@@ -20,13 +20,14 @@ for i, batch in enumerate(loader):
     case_dir = os.path.join(save_root, f"case_{i}")
     os.makedirs(case_dir, exist_ok=True)
 
-    layer_boxes = get_input_box(batch["layout"][0]) 
+    # collate_fn may return a single sample directly when batch_size=1
+    layer_boxes = get_input_box(batch["layout"])
     layer_boxes_path = os.path.join(case_dir, "layer_boxes.json")
     with open(layer_boxes_path, "w") as f:
         json.dump(layer_boxes, f, indent=4)
 
 
-    pixel_RGBA = batch["pixel_RGBA"][0]  # [L, C, H, W]
+    pixel_RGBA = batch["pixel_RGBA"]  # [L, C, H, W]
     composite_img = pixel_RGBA[0]
     pixel_RGBA = pixel_RGBA[1:]
     L = pixel_RGBA.shape[0]

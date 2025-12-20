@@ -187,7 +187,7 @@ class DLCVLayoutDatasetIndexed(Dataset):
         if show_debug:
             print(f"[CANVAS] {canvas_width} x {canvas_height}")
         
-        # === 4. 處理 layers ===
+        # === 4. 處理 layers（輸出 layout boxes: [x1,y1,x2,y2]） ===
         left_list = item.get('left', [])
         top_list = item.get('top', [])
         width_list = item.get('width', [])
@@ -201,7 +201,7 @@ class DLCVLayoutDatasetIndexed(Dataset):
         if show_debug:
             print(f"[LAYERS] Total: {num_layers}")
         
-        layout = []
+        layout = []  # list of [x1,y1,x2,y2]
         
         for i in range(num_layers):
             # 取得 bbox
@@ -265,17 +265,10 @@ class DLCVLayoutDatasetIndexed(Dataset):
             if layer_img.mode != 'RGBA':
                 layer_img = layer_img.convert('RGBA')
             
-            layout.append({
-                'layer_img': layer_img,
-                'left': x,
-                'top': y,
-                'width': w,
-                'height': h,
-                'type': layer_type,
-            })
+            layout.append([x, y, x + w, y + h])
         
         if show_debug:
-            print(f"[RESULT] Loaded {len(layout)} layers")
+            print(f"[RESULT] Loaded {len(layout)} layers (boxes)")
         
         return {
             'whole_img': whole_img,

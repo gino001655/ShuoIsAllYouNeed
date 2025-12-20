@@ -282,7 +282,26 @@ def train(config_path):
                 
                 # 顯示每個圖層的資訊
                 for i, layer in enumerate(batch["layout"][:5]):  # 只顯示前 5 個圖層
-                    print(f"    Layer {i}: bbox=({layer['left']:.0f}, {layer['top']:.0f}, {layer['width']:.0f}, {layer['height']:.0f}), type={layer.get('type', 'unknown')}")
+                    # 支援兩種 layout 格式：
+                    # - dict: {'left','top','width','height','type'} (indexed dataset)
+                    # - list/tuple: [x1, y1, x2, y2] (DLCVLayoutDataset)
+                    if isinstance(layer, dict):
+                        print(
+                            f"    Layer {i}: "
+                            f"bbox=({layer['left']:.0f}, {layer['top']:.0f}, {layer['width']:.0f}, {layer['height']:.0f}), "
+                            f"type={layer.get('type', 'unknown')}"
+                        )
+                    elif isinstance(layer, (list, tuple)) and len(layer) >= 4:
+                        x1, y1, x2, y2 = layer[:4]
+                        w = x2 - x1
+                        h = y2 - y1
+                        print(
+                            f"    Layer {i}: "
+                            f"bbox=({x1:.0f}, {y1:.0f}, {w:.0f}, {h:.0f}) "
+                            f"[x1,y1,x2,y2]=({x1:.0f},{y1:.0f},{x2:.0f},{y2:.0f})"
+                        )
+                    else:
+                        print(f"    Layer {i}: (unknown format) type={type(layer)} value={layer}")
                 if len(batch["layout"]) > 5:
                     print(f"    ... 還有 {len(batch['layout']) - 5} 個圖層")
                 

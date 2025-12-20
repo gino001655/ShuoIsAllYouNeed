@@ -255,7 +255,26 @@ def inference_layout(config):
         # 顯示前 5 個圖層的資訊
         print(f"  🖼️  圖層詳情:")
         for i, layer in enumerate(batch["layout"][:5]):
-            print(f"    Layer {i}: bbox=({layer['left']:.0f}, {layer['top']:.0f}, {layer['width']:.0f}, {layer['height']:.0f}), type={layer.get('type', 'unknown')}")
+            # 支援兩種 layout 格式：
+            # - dict: {'left','top','width','height','type'}
+            # - list/tuple: [x1, y1, x2, y2]
+            if isinstance(layer, dict):
+                print(
+                    f"    Layer {i}: "
+                    f"bbox=({layer['left']:.0f}, {layer['top']:.0f}, {layer['width']:.0f}, {layer['height']:.0f}), "
+                    f"type={layer.get('type', 'unknown')}"
+                )
+            elif isinstance(layer, (list, tuple)) and len(layer) >= 4:
+                x1, y1, x2, y2 = layer[:4]
+                w = x2 - x1
+                h = y2 - y1
+                print(
+                    f"    Layer {i}: "
+                    f"bbox=({x1:.0f}, {y1:.0f}, {w:.0f}, {h:.0f}) "
+                    f"[x1,y1,x2,y2]=({x1:.0f},{y1:.0f},{x2:.0f},{y2:.0f})"
+                )
+            else:
+                print(f"    Layer {i}: (unknown format) type={type(layer)} value={layer}")
         if len(batch["layout"]) > 5:
             print(f"    ... 還有 {len(batch['layout']) - 5} 個圖層")
         print(f"{'='*60}\n")
@@ -265,7 +284,17 @@ def inference_layout(config):
         scale_w = width / original_width if original_width > 0 else 1.0
         
         # 調整 layout 座標以匹配調整後的尺寸
-        original_layout = batch["layout"]
+        # Normalize layout to boxes: [x1,y1,x2,y2]
+        original_layout = []
+        for layer in batch["layout"]:
+            if isinstance(layer, dict):
+                x1 = float(layer["left"])
+                y1 = float(layer["top"])
+                x2 = x1 + float(layer["width"])
+                y2 = y1 + float(layer["height"])
+                original_layout.append([x1, y1, x2, y2])
+            else:
+                original_layout.append(layer)
         adjusted_layout = []
         for layer_box in original_layout:
             # layer_box 格式: [x1, y1, x2, y2]

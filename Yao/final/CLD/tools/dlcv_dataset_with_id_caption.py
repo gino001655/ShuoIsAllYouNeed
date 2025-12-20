@@ -117,6 +117,20 @@ class DLCVLayoutDatasetWithIDCaption(Dataset):
             whole_img_RGBA = preview_value.convert("RGBA")
         elif isinstance(preview_value, str):
             whole_img_RGBA = Image.open(preview_value).convert("RGBA")
+        elif isinstance(preview_value, dict):
+            # HuggingFace Image feature dict: {'bytes': ..., 'path': ...}
+            b = preview_value.get("bytes", None)
+            p = preview_value.get("path", None)
+            if b:
+                from io import BytesIO
+                whole_img_RGBA = Image.open(BytesIO(b)).convert("RGBA")
+            elif p:
+                whole_img_RGBA = Image.open(p).convert("RGBA")
+            else:
+                raise ValueError(f"preview dict 格式不支持，keys: {list(preview_value.keys())}")
+        elif isinstance(preview_value, (bytes, bytearray)):
+            from io import BytesIO
+            whole_img_RGBA = Image.open(BytesIO(preview_value)).convert("RGBA")
         else:
             raise ValueError(f"preview 欄位格式不支持: {type(preview_value)}")
         
