@@ -34,14 +34,44 @@ class DLCVLayoutDatasetIndexed(Dataset):
         self.enable_debug = enable_debug
         self.max_layers = max_layers
         
-        # 載入 dataset
+        # 載入 dataset（使用 pyarrow 避免 metadata 問題）
         print(f"載入 dataset from {data_dir}...")
-        self.dataset = load_dataset(
-            'parquet',
-            data_dir=str(self.data_dir),
-            split='train'
-        )
-        print(f"✓ 載入 {len(self.dataset)} 個樣本")
+        try:
+            self.dataset = load_dataset(
+                'parquet',
+                data_dir=str(self.data_dir),
+                split='train'
+            )
+            print(f"✓ 載入 {len(self.dataset)} 個樣本")
+        except (TypeError, KeyError) as e:
+            # Fallback: 直接用 pyarrow 讀取，避免 metadata 解析問題
+            print(f"  ⚠️  load_dataset 失敗，使用 pyarrow 直接讀取...")
+            import pyarrow.parquet as pq
+            from pathlib import Path
+            
+            # 找到所有 parquet 文件
+            parquet_files = sorted(self.data_dir.glob("*.parquet"))
+            if not parquet_files:
+                # 如果 data_dir 是 data/ 目錄，則在裡面找
+                data_subdir = self.data_dir / "data"
+                if data_subdir.exists():
+                    parquet_files = sorted(data_subdir.glob("*.parquet"))
+            
+            if not parquet_files:
+                raise FileNotFoundError(f"No parquet files found in {self.data_dir}")
+            
+            print(f"  找到 {len(parquet_files)} 個 parquet 文件")
+            
+            # 讀取所有文件
+            all_rows = []
+            for pf in parquet_files:
+                table = pq.read_table(str(pf))
+                for i in range(len(table)):
+                    row = {col: table[col][i].as_py() for col in table.column_names}
+                    all_rows.append(row)
+            
+            self.dataset = all_rows
+            print(f"  ✓ 載入 {len(self.dataset)} 個樣本")
         
         # 載入 caption mapping (index-based)
         self.caption_mapping = self._load_caption_mapping(caption_json_path)
@@ -104,7 +134,11 @@ class DLCVLayoutDatasetIndexed(Dataset):
             print(f"[LOAD] Sample {idx}")
             print(f"{'='*60}")
         
-        item = self.dataset[idx]
+        # 支援 Dataset 對象和 list
+        if isinstance(self.dataset, list):
+            item = self.dataset[idx]
+        else:
+            item = self.dataset[idx]
         
         # === 1. 取得 preview 圖片 ===
         preview = item['preview']
