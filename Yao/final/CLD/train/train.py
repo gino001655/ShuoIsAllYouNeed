@@ -8,7 +8,7 @@ from io import StringIO
 # Set CUDA_VISIBLE_DEVICES before importing torch
 # You can modify this or set it via environment variable
 if "CUDA_VISIBLE_DEVICES" not in os.environ:
-os.environ["CUDA_VISIBLE_DEVICES"] = "7"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "7"
 
 # Suppress verbose warnings and truncation messages
 os.environ["TRANSFORMERS_VERBOSITY"] = "error"
