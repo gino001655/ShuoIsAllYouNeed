@@ -181,19 +181,22 @@ def inference_layout(config):
     pipeline = initialize_pipeline(config)
 
     # 嘗試載入 dataset，如果 custom_dataset 失敗則 fallback 到原始 dataset
+    # Determine which dataset class to use
     if _use_custom_dataset:
         try:
             dataset = CustomLayoutTrainDataset(config['data_dir'], split="test")
             collate_fn = custom_collate_fn
-            print("[INFO] 成功使用自訂資料集 (custom_dataset.py)", flush=True)
+            print("[INFO] Using CustomLayoutTrainDataset (custom_dataset.py)", flush=True)
         except (FileNotFoundError, ValueError) as e:
-            print(f"[WARNING] 自訂資料集載入失敗: {e}", flush=True)
-            print("[INFO] 切換到原始資料集 (dataset.py)", flush=True)
-            from tools.dataset import LayoutTrainDataset, collate_fn
-            dataset = LayoutTrainDataset(config['data_dir'], split="test")
+            print(f"[WARNING] Custom dataset load failed: {e}", flush=True)
+            print("[INFO] Fallback to DLCVLayoutDataset", flush=True)
+            from tools.dlcv_dataset import DLCVLayoutDataset, collate_fn
+            dataset = DLCVLayoutDataset(config['data_dir'], split="val") # Inference usually on val or test
     else:
-        from tools.dataset import LayoutTrainDataset, collate_fn
-    dataset = LayoutTrainDataset(config['data_dir'], split="test")
+        # Default to DLCVLayoutDataset for this project
+        from tools.dlcv_dataset import DLCVLayoutDataset, collate_fn
+        print("[INFO] Using DLCVLayoutDataset (tools.dlcv_dataset)", flush=True)
+        dataset = DLCVLayoutDataset(config['data_dir'], split="val")
     
     loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0, collate_fn=collate_fn)
 

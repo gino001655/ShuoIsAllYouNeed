@@ -407,3 +407,4 @@ bash run_parallel_caption_generation.sh
 
 **现在可以开始全量生成了！** 🚀
 
+

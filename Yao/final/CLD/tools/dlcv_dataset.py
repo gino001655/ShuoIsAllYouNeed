@@ -289,3 +289,4 @@ def collate_fn(batch):
     """Simple collate function that returns the first item (batch_size=1)."""
     return batch[0] if len(batch) == 1 else batch
 
+
