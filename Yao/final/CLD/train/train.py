@@ -139,32 +139,36 @@ def train(config_path):
     print(f"[INFO] LoRA injected. Transformer Trainable params: {n_trainable/1e6:.2f}M; MultiLayer-Adapter Trainable params: {n_trainable_adapter/1e6:.2f}M", flush=True)
 
     # Multi-GPU support with DataParallel
-    # NOTE: DataParallel has limitations with batch_size=1 and complex input structures
-    # For this model with variable-length layer sequences, DataParallel may cause issues
     use_multi_gpu = config.get("use_multi_gpu", False)
     # Save dtype and config before wrapping (needed for prepare_image and other operations)
     transformer_dtype = pipeline.transformer.dtype
     transformer_config = pipeline.transformer.config
     
-    # Check if DataParallel is suitable (requires batch_size > 1 for effective splitting)
-    batch_size = 1  # Current training uses batch_size=1
-    if use_multi_gpu and torch.cuda.is_available() and torch.cuda.device_count() > 1:
-        if batch_size == 1:
-            print(f"[WARNING] DataParallel is not recommended with batch_size=1 due to complex input structures.", flush=True)
-            print(f"[WARNING] Disabling DataParallel. Use batch_size > 1 or DDP for multi-GPU training.", flush=True)
-            use_multi_gpu = False
-    
     if use_multi_gpu and torch.cuda.is_available() and torch.cuda.device_count() > 1:
         num_gpus = torch.cuda.device_count()
         print(f"[INFO] Using {num_gpus} GPUs with DataParallel", flush=True)
+        print(f"[INFO] Note: DataParallel will replicate the model on each GPU", flush=True)
+        print(f"[INFO] For batch_size=1, DataParallel may not provide speedup but will use all GPUs", flush=True)
+        
         # Wrap models with DataParallel
-        pipeline.transformer = torch.nn.DataParallel(pipeline.transformer)
-        pipeline.multiLayerAdapter = torch.nn.DataParallel(pipeline.multiLayerAdapter)
+        # Use device_ids to explicitly specify which GPUs to use
+        device_ids = list(range(torch.cuda.device_count()))
+        pipeline.transformer = torch.nn.DataParallel(pipeline.transformer, device_ids=device_ids)
+        pipeline.multiLayerAdapter = torch.nn.DataParallel(pipeline.multiLayerAdapter, device_ids=device_ids)
+        
         # Update device to cuda:0 (DataParallel will handle distribution)
         device = torch.device("cuda:0")
-        print(f"[INFO] Models wrapped with DataParallel on {num_gpus} GPUs", flush=True)
+        print(f"[INFO] Models wrapped with DataParallel on GPUs: {device_ids}", flush=True)
+        
+        # Verify models are on correct devices
+        if torch.cuda.is_available():
+            for gpu_id in device_ids:
+                print(f"[INFO] GPU {gpu_id}: {torch.cuda.get_device_name(gpu_id)}", flush=True)
     else:
         if torch.cuda.is_available():
+            if use_multi_gpu:
+                if torch.cuda.device_count() <= 1:
+                    print(f"[WARNING] use_multi_gpu=True but only {torch.cuda.device_count()} GPU available", flush=True)
             print(f"[INFO] Using single GPU: {device}", flush=True)
 
     print("[INFO] Using Prodigy optimizer.", flush=True)
@@ -293,17 +297,50 @@ def train(config_path):
     unk_token = str(config.get("unk_token", "<unk>"))
     unk_skip_min_count = int(config.get("unk_skip_min_count", 1))
     
+    # Optional: skip samples with too many layers or too large images
+    skip_large_samples = bool(config.get("skip_large_samples", False))
+    max_layers = int(config.get("max_layers", 999999))  # Default: no limit
+    max_image_size = int(config.get("max_image_size", 999999))  # Default: no limit (in pixels, e.g., 2048*2048 = 4194304)
+    max_total_pixels = int(config.get("max_total_pixels", 999999999))  # Default: no limit (width * height)
+    
+    if skip_large_samples:
+        print(f"[INFO] 啟用大樣本過濾:")
+        print(f"  最大 Layer 數: {max_layers}")
+        print(f"  最大圖像尺寸: {max_image_size} px (單邊)")
+        print(f"  最大總像素數: {max_total_pixels:,} px² (寬×高)")
+    
     while step < max_steps:
         for batch in loader:
             if step >= max_steps: break
 
             # 提取 batch 數據
-            pixel_RGB = batch["pixel_RGB"].to(device=device, dtype=torch.bfloat16)
-            pixel_RGB = pipeline.image_processor.preprocess(pixel_RGB)
             H = int(batch["height"])     # By default, only a single sample per batch is allowed (because later the data will be concatenated based on bounding boxes, which have varying lengths)
             W = int(batch["width"])
             adapter_img = batch["whole_img"]
             caption = batch["caption"]
+            
+            # Filter: skip samples with too many layers or too large images
+            if skip_large_samples:
+                num_layers = len(batch["layout"])
+                total_pixels = W * H
+                max_dimension = max(W, H)
+                
+                skip_reason = None
+                if num_layers > max_layers:
+                    skip_reason = f"layers={num_layers} > {max_layers}"
+                elif max_dimension > max_image_size:
+                    skip_reason = f"max_dim={max_dimension} > {max_image_size}"
+                elif total_pixels > max_total_pixels:
+                    skip_reason = f"pixels={total_pixels:,} > {max_total_pixels:,}"
+                
+                if skip_reason:
+                    sample_idx = batch.get("idx", None)
+                    print(f"[SKIP] step={step} sample_idx={sample_idx} {skip_reason} -> skip", flush=True)
+                    continue
+            
+            pixel_RGB = batch["pixel_RGB"].to(device=device, dtype=torch.bfloat16)
+            pixel_RGB = pipeline.image_processor.preprocess(pixel_RGB)
+            
             # Build layer boxes and filter out invalid (zero-area) boxes to prevent model crash
             raw_layer_boxes = get_input_box(batch["layout"])
             valid_indices = []

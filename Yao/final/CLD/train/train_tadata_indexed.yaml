@@ -5,8 +5,8 @@ seed: 42
 max_layer_num: 52
 num_inference_steps: 28
 
-lora_rank: 64
-lora_alpha: 64
+lora_rank: 32
+lora_alpha: 32
 lora_dropout: 0
 
 max_steps: 200000
@@ -31,6 +31,12 @@ enable_dataset_debug: true  # 顯示前 3 個樣本的詳細載入資訊
 skip_unk_captions: true
 unk_token: "<unk>"
 unk_skip_min_count: 1
+
+# 大樣本過濾設定（減少 VRAM 消耗）
+skip_large_samples: false  # 設為 true 啟用過濾
+max_layers: 50  # 最大 Layer 數（建議根據統計結果設定，如 95% 百分位數）
+max_image_size: 2048  # 最大圖像尺寸（單邊，單位：px，建議 2048 或 1536）
+max_total_pixels: 4194304  # 最大總像素數（寬×高，2048×2048=4194304，建議根據統計結果設定）
 
 # Multi-GPU 設定
 use_multi_gpu: true  # 設為 true 啟用 DataParallel（需要 2+ GPUs）
