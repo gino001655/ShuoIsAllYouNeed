@@ -62,11 +62,27 @@ class DLCVLayoutDataset(Dataset):
         
         # Load caption mapping if provided
         self.caption_mapping = {}
+        self.caption_mapping_indexed = {}  # Index-based mapping
         if caption_mapping_path and os.path.exists(caption_mapping_path):
             import json
+            import re
             with open(caption_mapping_path, 'r', encoding='utf-8') as f:
-                self.caption_mapping = json.load(f)
-            print(f"[INFO] 載入 caption mapping: {len(self.caption_mapping)} 個 captions")
+                path_based_mapping = json.load(f)
+            
+            # Keep path-based mapping
+            self.caption_mapping = path_based_mapping
+            
+            # Also create index-based mapping for TAData (Image objects without paths)
+            # Extract index from paths like "/workspace/.../00000123.png"
+            pattern = re.compile(r'(\d{8})\.png$')
+            for path, caption in path_based_mapping.items():
+                match = pattern.search(path)
+                if match:
+                    idx = int(match.group(1))  # Extract number, remove leading zeros
+                    self.caption_mapping_indexed[idx] = caption
+            
+            print(f"[INFO] 載入 caption mapping: {len(self.caption_mapping)} 個 captions (path-based)")
+            print(f"[INFO] 建立 index-based mapping: {len(self.caption_mapping_indexed)} 個 captions")
         
         # Load all parquet files
         datasets_list = []
@@ -180,7 +196,17 @@ class DLCVLayoutDataset(Dataset):
         
         # Caption: prioritize caption_mapping, fallback to title
         caption_found = False
-        if self.caption_mapping and preview_path:
+        
+        # If preview is Image object (TAData), use index-based matching
+        if isinstance(preview, Image.Image) and self.caption_mapping_indexed:
+            if idx in self.caption_mapping_indexed:
+                caption = self.caption_mapping_indexed[idx]
+                caption_found = True
+                if show_debug:
+                    print(f"[CAPTION] From index {idx}: {caption[:100]}...")
+        
+        # Otherwise use path-based matching
+        if not caption_found and self.caption_mapping and preview_path:
             # Try original path first
             if preview_path in self.caption_mapping:
                 caption = self.caption_mapping[preview_path]

@@ -20,8 +20,10 @@ optimizer: Prodigy
 adapter_scale: 0.9
 
 # ⭐ 方案 B 配置：使用 TAData + caption.json
-use_indexed_dataset: true  # 啟用 index-based caption matching
-data_dir: "/workspace/dataset/DLCV_dataset"  # TAData 目錄
+# Training 使用 DLCVLayoutDataset（支持 caption_mapping），不用 indexed dataset
+# indexed dataset 只用於 inference
+use_indexed_dataset: false  # Training 不用 indexed dataset
+data_dir: "/workspace/dataset/DLCV_dataset/data"  # TAData 目錄（指向 data/ 子目錄）
 caption_mapping: "/workspace/ShuoIsAllYouNeed/Yao/final/CLD/caption_llava16_final.json"  # LLaVA captions
 
 # Debug 設定
