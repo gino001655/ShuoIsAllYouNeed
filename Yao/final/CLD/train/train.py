@@ -139,10 +139,21 @@ def train(config_path):
     print(f"[INFO] LoRA injected. Transformer Trainable params: {n_trainable/1e6:.2f}M; MultiLayer-Adapter Trainable params: {n_trainable_adapter/1e6:.2f}M", flush=True)
 
     # Multi-GPU support with DataParallel
+    # NOTE: DataParallel has limitations with batch_size=1 and complex input structures
+    # For this model with variable-length layer sequences, DataParallel may cause issues
     use_multi_gpu = config.get("use_multi_gpu", False)
     # Save dtype and config before wrapping (needed for prepare_image and other operations)
     transformer_dtype = pipeline.transformer.dtype
     transformer_config = pipeline.transformer.config
+    
+    # Check if DataParallel is suitable (requires batch_size > 1 for effective splitting)
+    batch_size = 1  # Current training uses batch_size=1
+    if use_multi_gpu and torch.cuda.is_available() and torch.cuda.device_count() > 1:
+        if batch_size == 1:
+            print(f"[WARNING] DataParallel is not recommended with batch_size=1 due to complex input structures.", flush=True)
+            print(f"[WARNING] Disabling DataParallel. Use batch_size > 1 or DDP for multi-GPU training.", flush=True)
+            use_multi_gpu = False
+    
     if use_multi_gpu and torch.cuda.is_available() and torch.cuda.device_count() > 1:
         num_gpus = torch.cuda.device_count()
         print(f"[INFO] Using {num_gpus} GPUs with DataParallel", flush=True)
