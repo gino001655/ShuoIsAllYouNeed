@@ -25,9 +25,9 @@ artplus_lora_dir: "/workspace/ShuoIsAllYouNeed/Yao/final/CLD/ckpt/prism_ft_LoRA"
 # ⭐ 訓練好的 Checkpoint 路徑（從 training 的 output_dir 中選擇）
 # 例如：如果 training 保存到 "FT_on_TAData_ckpt/checkpoint_00200"
 # 則設置為：
-layer_ckpt: "FT_on_TAData_ckpt/checkpoint_00200"  # Checkpoint 根目錄（用於載入 layer_pe.pth）
-lora_ckpt: "FT_on_TAData_ckpt/checkpoint_00200/transformer"  # Transformer LoRA checkpoint
-adapter_lora_dir: "FT_on_TAData_ckpt/checkpoint_00200/adapter"  # Adapter LoRA checkpoint
+layer_ckpt: "FT_on_TAData_ckpt/checkpoint_000200"  # Checkpoint 根目錄（用於載入 layer_pe.pth）
+lora_ckpt: "FT_on_TAData_ckpt/checkpoint_000200/transformer"  # Transformer LoRA checkpoint
+adapter_lora_dir: "FT_on_TAData_ckpt/checkpoint_000200/adapter"  # Adapter LoRA checkpoint
 
 # Inference 參數
 cfg: 4.0  # Guidance scale（和 training 一樣）
