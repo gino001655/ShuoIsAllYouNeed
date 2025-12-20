@@ -162,7 +162,10 @@ class LLaVACaptioner:
         )
         
         # Move to correct device with correct dtype
-        images_tensor = images_tensor.to(device=self.device, dtype=torch.float16)
+        if isinstance(images_tensor, list):
+            images_tensor = [image.to(device=self.device, dtype=torch.float16) for image in images_tensor]
+        else:
+            images_tensor = images_tensor.to(device=self.device, dtype=torch.float16)
         
         # Tokenize all prompts
         input_ids_list = []
@@ -274,7 +277,10 @@ class LLaVACaptioner:
         )
         
         # Move to correct device with correct dtype
-        images_tensor = images_tensor.to(device=self.device, dtype=torch.float16)
+        if isinstance(images_tensor, list):
+            images_tensor = [image.to(device=self.device, dtype=torch.float16) for image in images_tensor]
+        else:
+            images_tensor = images_tensor.to(device=self.device, dtype=torch.float16)
         
         # Tokenize
         input_ids = (
