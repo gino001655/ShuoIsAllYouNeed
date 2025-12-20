@@ -383,7 +383,7 @@ class LLaVACaptioner:
         text = text.lstrip(".:,;!? \n\t")
 
         # Remove trailing separators if present
-        if conv.sep_style == SeparatorStyle.TWO and conv.sep2 and text.endswith(conv.sep2):
+        if conv.sep_style == self.SeparatorStyle.TWO and conv.sep2 and text.endswith(conv.sep2):
             text = text[: -len(conv.sep2)].strip()
         if conv.sep and text.endswith(conv.sep):
             text = text[: -len(conv.sep)].strip()
@@ -423,7 +423,7 @@ class LLaVACaptioner:
         text = text.lstrip(".:,;!? \n\t")
         
         # Remove trailing separators
-        if conv.sep_style == SeparatorStyle.TWO and conv.sep2 and text.endswith(conv.sep2):
+        if conv.sep_style == self.SeparatorStyle.TWO and conv.sep2 and text.endswith(conv.sep2):
             text = text[: -len(conv.sep2)].strip()
         if conv.sep and text.endswith(conv.sep):
             text = text[: -len(conv.sep)].strip()
