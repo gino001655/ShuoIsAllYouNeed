@@ -73,15 +73,15 @@ class LLaVACaptioner:
         from llava.mm_utils import process_images, tokenizer_image_token, get_model_name_from_path
         
         # Store as instance variables for use in other methods
-        self.IMAGE_TOKEN_INDEX = self.IMAGE_TOKEN_INDEX
-        self.DEFAULT_IMAGE_TOKEN = self.DEFAULT_IMAGE_TOKEN
-        self.DEFAULT_IM_START_TOKEN = self.DEFAULT_IM_START_TOKEN
-        self.DEFAULT_IM_END_TOKEN = self.DEFAULT_IM_END_TOKEN
-        self.IMAGE_PLACEHOLDER = self.IMAGE_PLACEHOLDER
-        self.conv_templates = self.conv_templates
-        SeparatorStyle = SeparatorStyle
-        self.process_images = self.process_images
-        self.tokenizer_image_token = self.tokenizer_image_token
+        self.IMAGE_TOKEN_INDEX = IMAGE_TOKEN_INDEX
+        self.DEFAULT_IMAGE_TOKEN = DEFAULT_IMAGE_TOKEN
+        self.DEFAULT_IM_START_TOKEN = DEFAULT_IM_START_TOKEN
+        self.DEFAULT_IM_END_TOKEN = DEFAULT_IM_END_TOKEN
+        self.IMAGE_PLACEHOLDER = IMAGE_PLACEHOLDER
+        self.conv_templates = conv_templates
+        self.SeparatorStyle = SeparatorStyle
+        self.process_images = process_images
+        self.tokenizer_image_token = tokenizer_image_token
         
         self.device = torch.device(device) if isinstance(device, str) else device
         self.prompt = prompt
