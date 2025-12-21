@@ -175,6 +175,14 @@ class CustomFluxPipeline(FluxPipeline):
         if isinstance(self.transformer, torch.nn.DataParallel):
             return self.transformer.module.config
         return self.transformer.config
+    
+    def _get_transformer_dtype(self):
+        """Safely get transformer dtype, handling DataParallel wrapping."""
+        if isinstance(self.transformer, torch.nn.DataParallel):
+            # Get dtype from first parameter of the wrapped module
+            return next(self.transformer.module.parameters()).dtype
+        # Get dtype from first parameter
+        return next(self.transformer.parameters()).dtype
 
     @torch.no_grad()
     def __call__(
