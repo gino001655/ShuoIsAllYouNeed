@@ -481,8 +481,8 @@ def inference_layout(config):
         # Adjust x_hat range from [-1, 1] to [0, 1]
         x_hat = (x_hat + 1) / 2
 
-        # Remove batch dimension and ensure float32 dtype
-        x_hat = x_hat.squeeze(0).permute(1, 0, 2, 3).to(torch.float32)
+        # Ensure float32 dtype
+        x_hat = x_hat.to(torch.float32)
         
         this_index = f"case_{idx}"
         case_dir = os.path.join(config['save_dir'], this_index)
@@ -500,9 +500,9 @@ def inference_layout(config):
             x_hat_layers = x_hat[0]  # Remove batch dimension -> (channels, num_layers, height, width)
             x_hat_layers = x_hat_layers.permute(1, 0, 2, 3)  # -> (num_layers, channels, height, width)
         elif len(x_hat.shape) == 4:
-            # Single layer case: (batch, channels, height, width)
-            # Treat as single layer
-            x_hat_layers = x_hat[0].unsqueeze(0)  # -> (1, channels, height, width)
+            # 4D tensor (N, C, H, W) is treated as multiple layers
+            # This happens when batch_size=1 is squeezed implicitly or returned by VAE
+            x_hat_layers = x_hat
         else:
             print(f"[ERROR] Unexpected x_hat shape: {x_hat.shape}", flush=True)
             idx += 1
