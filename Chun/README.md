@@ -77,8 +77,20 @@ python visualize_batch.py \
 
 ---
 
+## ⚠️ 限制與挑戰 (Limitations & Future Work)
 
+### 過度分割問題 (Over-Granularity / Lack of Semantic Grouping)
+本工具忠實呈現了 RT-DETR 的原始偵測結果。雖然我們成功保留了「階層結構」，但在某些設計複雜的案例中，會暴露模型傾向於偵測**原子級元素（Atomic Elements）**而非**語義區塊（Semantic Blocks）**的特性。
+
+**案例分析：**
+如下圖的 "BLACK FRIDAY" 海報所示：
+* **現象**：模型對每一個單獨的字母（B, L, A, C, K...）都給出了極高的信心分數，因此本工具將其全部標示為 **[GOOD]** 並予以保留。
+* **問題**：雖然技術上偵測正確（這些確實是文字），但在佈局生成的應用場景中，我們通常更希望得到「單字級（Word-level）」或「行級（Line-level）」的框選，而非零散的字母框。
+* **結論**：這顯示了單純依賴「信心分數」與「移除 NMS」雖然能救回階層資訊，但對於過度細碎的偵測結果，仍需要引入後處理演算法（如基於距離的 **Layout Clustering**）來進行語義分組，而非單純視為壞框刪除。
+
+<img width="472" height="818" alt="598558139_1578974490196697_4718800710661783201_n" src="https://github.com/user-attachments/assets/9ecf6773-c625-4232-ba05-37bf4fa253ab" />
 
 ```
 
 ```
+
