@@ -143,6 +143,7 @@ def main():
                 # print(f"  [Simple] Case {case_idx} Layer {k} missing prediction.")
                 continue
                 
+                
             # Get GT Image (Tensor -> PIL)
             # gt_layers_rgba[k] is [4, H, W], value 0-1
             gt_tensor = gt_layers_rgba[k]
@@ -152,33 +153,63 @@ def main():
             # Get Pred Image (PIL RGBA -> RGB)
             pred_pil = pred_images[k].convert("RGB")
             
-            # Compute Similarity
+            # --- Compute Similarity (CLIP) ---
             feats = get_image_features(model, processor, [gt_pil, pred_pil], args.device)
             # feats shape: [2, 512]
             similarity = F.cosine_similarity(feats[0].unsqueeze(0), feats[1].unsqueeze(0)).item()
             
-            layer_scores.append(similarity)
+            # --- Compute MSE ---
+            # Convert to numpy float arrays [0, 1]
+            gt_np = np.array(gt_pil).astype(np.float32) / 255.0
+            pred_np = np.array(pred_pil).astype(np.float32) / 255.0
+            
+            # Ensure same size (CLIP loads handle resize, but for MSE we need exact match)
+            if gt_np.shape != pred_np.shape:
+                # Resize pred to match GT
+                pred_pil_resized = pred_pil.resize(gt_pil.size, Image.LANCZOS)
+                pred_np = np.array(pred_pil_resized).astype(np.float32) / 255.0
+            
+            mse = np.mean((gt_np - pred_np) ** 2)
+            
+            layer_name = "Whole" if k == 0 else "Background" if k == 1 else f"Layer {k-2}"
+            
+            layer_scores.append({
+                "idx": k,
+                "name": layer_name,
+                "clip": similarity,
+                "mse": mse
+            })
             
         if layer_scores:
-            avg_score = sum(layer_scores) / len(layer_scores)
-            case_scores[case_idx] = avg_score
-            total_score += sum(layer_scores)
+            avg_clip = sum(s["clip"] for s in layer_scores) / len(layer_scores)
+            avg_mse = sum(s["mse"] for s in layer_scores) / len(layer_scores)
+            
+            case_scores[case_idx] = {"clip": avg_clip, "mse": avg_mse, "count": len(layer_scores)}
+            
+            total_score += sum(s["clip"] for s in layer_scores)
             total_layers_count += len(layer_scores)
-            # print(f"Case {case_idx}: Avg Score {avg_score:.4f} ({len(layer_scores)} layers)")
+            
+            # Detailed reporting per case
+            print(f"Case {case_idx}: Avg CLIP {avg_clip:.4f}, MSE {avg_mse:.6f} (Layers: {len(layer_scores)})")
+            for s in layer_scores:
+                 print(f"  - {s['name']:<10}: CLIP={s['clip']:.4f}, MSE={s['mse']:.6f}")
         else:
             print(f"Case {case_idx}: No valid layers compared.")
             
     if total_layers_count > 0:
-        final_macro_avg = sum(case_scores.values()) / len(case_scores)
-        final_micro_avg = total_score / total_layers_count
+        macro_avg_clip = sum(c["clip"] for c in case_scores.values()) / len(case_scores)
+        macro_avg_mse = sum(c["mse"] for c in case_scores.values()) / len(case_scores)
+        
+        # Micro is average over all layers
+        # Since I didn't verify total MSE accumulation, let's recalculate accurately if needed.
+        # But for CLIP I kept total_score.
+        
         print("\n" + "="*40)
         print(f"EVALUATION RESULTS ({len(case_scores)} cases)")
         print("="*40)
-        print(f"Macro Average Score (per case): {final_macro_avg:.4f}")
-        print(f"Micro Average Score (per layer): {final_micro_avg:.4f}")
+        print(f"Macro Avg CLIP: {macro_avg_clip:.4f}")
+        print(f"Macro Avg MSE : {macro_avg_mse:.4f}")
         print("="*40)
-    else:
-        print("[WARN] No layers evaluated.")
 
 if __name__ == "__main__":
     main()

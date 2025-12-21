@@ -176,5 +176,5 @@ pip install transformers
 
 # 執行評估
 python eval_clip_similarity.py \
-  --data_dir /tmp2/b12902041/Gino/TAData \
+  --data_dir /workspace/dataset/DLCV_dataset \
   --infer_dir inference_output
