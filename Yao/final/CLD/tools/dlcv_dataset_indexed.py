@@ -184,6 +184,15 @@ class DLCVLayoutDatasetIndexed(Dataset):
         canvas_width = item.get('canvas_width', whole_img.width)
         canvas_height = item.get('canvas_height', whole_img.height)
         
+        # Force dimensions to be multiples of 16 to avoid mismatches between VAE grid and quantized boxes
+        # This matches the logic in dlcv_dataset.py
+        canvas_width = ((canvas_width + 15) // 16) * 16
+        canvas_height = ((canvas_height + 15) // 16) * 16
+        
+        # Resize whole_img to match canvas dimensions
+        if whole_img.size != (canvas_width, canvas_height):
+            whole_img = whole_img.resize((canvas_width, canvas_height), Image.LANCZOS)
+        
         if show_debug:
             print(f"[CANVAS] {canvas_width} x {canvas_height}")
         

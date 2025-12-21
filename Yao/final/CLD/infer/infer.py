@@ -442,6 +442,8 @@ def inference_layout(config):
 
         if hasattr(adapter_img, "size"):
             print(f"[DEBUG] Adapter Img Size: {adapter_img.size}, Target (W,H): ({width}, {height})", flush=True)
+        
+        print(f"[DEBUG] Calling pipeline with height={height}, width={width}", flush=True)
 
         # Generate layers using pipeline
         x_hat, image, latents = pipeline(
