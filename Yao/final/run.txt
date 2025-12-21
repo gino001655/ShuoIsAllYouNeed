@@ -168,3 +168,13 @@ python convert_tadata_with_captions.py \
 python verify_converted_dataset.py \
     --data_dir /tmp2/b12902041/Gino/TAData_with_llava_captions \
     --num_samples 5
+
+# 跑 clip
+
+# 安裝必要的套件 (如果尚未安裝)
+pip install transformers
+
+# 執行評估
+python eval_clip_similarity.py \
+  --data_dir /tmp2/b12902041/Gino/TAData \
+  --infer_dir inference_output
