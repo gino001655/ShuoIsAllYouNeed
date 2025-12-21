@@ -246,8 +246,8 @@ def main(args):
     rgb_pil, depth_pil, orig_w, orig_h = load_rgbd_image(args.rgb_file, args.depth_file)
     
     if args.use_zero_depth:
-        print("⚠️ Forcing flat depth input (val=128)")
-        depth_pil = Image.new('L', (orig_w, orig_h), 128)
+        print("⚠️ Forcing zero depth input (ignoring loaded depth map)")
+        depth_pil = Image.new('L', (orig_w, orig_h), 0)
 
     # Prepare input
     rgbd_tensor = prepare_input(rgb_pil, depth_pil, target_size=640)

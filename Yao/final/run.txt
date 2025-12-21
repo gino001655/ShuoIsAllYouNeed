@@ -178,3 +178,25 @@ pip install transformers
 python eval_clip_similarity.py \
   --data_dir /workspace/dataset/DLCV_dataset \
   --infer_dir inference_output
+
+
+
+
+python tools/infer_layer.py \
+    -c configs/rtdetr/rtdetr_r50vd_layer_prediction.yml \
+    -r output/fixed_version/checkpoint_rtdetr_yao.pth \
+    --rgb-file /tmp2/b12902041/Gino/ShuoIsAllYouNeed/Yao/final/testing-set/inputs/piccollage_017.png \
+    --use-zero-depth \
+    -o test_result_rtdetr_yao.jpg \
+    -d cuda:0 \
+    -t 0.1
+
+
+python tools/batch_infer_cld.py \
+    -c configs/rtdetr/rtdetr_r50vd_layer_prediction.yml \
+    -r weights/checkpoint0005.pth \
+    --input-dir /tmp2/b12902041/Gino/ShuoIsAllYouNeed/Yao/final/testing-set/inputs \
+    --output-dir /tmp2/b12902041/Gino/ShuoIsAllYouNeed/Yao/final/testing-set/outputs \
+    --use-zero-depth \
+    --expand-ratio 1.1 \
+    -d cuda:0
