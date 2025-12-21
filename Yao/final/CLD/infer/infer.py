@@ -162,13 +162,44 @@ def get_input_box(layer_boxes):
     Uses correct ceiling division: ((val + 15) // 16) * 16
     
     Args:
-        layer_boxes: List of boxes, each box can be:
-            - [x1, y1, x2, y2] (list/tuple of 4 numbers)
-            - dict with 'left', 'top', 'width', 'height' keys
-            - None (invalid box)
-            - Other types (will be skipped)
+        layer_boxes: Can be:
+            - List of boxes: [[x1, y1, x2, y2], [x1, y1, x2, y2], ...]
+            - Flattened list: [x1, y1, x2, y2, x1, y1, x2, y2, ...] (will be reshaped)
+            - List of dicts: [{'left': x, 'top': y, 'width': w, 'height': h}, ...]
     """
     list_layer_box = []
+    
+    # Handle empty input
+    if not layer_boxes:
+        return []
+    
+    # Check if layer_boxes is a flattened list (all elements are numbers)
+    # This happens when layout is accidentally flattened
+    first_elem = layer_boxes[0] if len(layer_boxes) > 0 else None
+    
+    # If first element is a number (int/float), treat as flattened list
+    if isinstance(first_elem, (int, float)):
+        # Reshape flattened list into boxes: [x1, y1, x2, y2, x1, y1, x2, y2, ...] -> [[x1, y1, x2, y2], ...]
+        if len(layer_boxes) % 4 != 0:
+            print(f"[WARN] Flattened layout has {len(layer_boxes)} elements (not divisible by 4), skipping", flush=True)
+            return []
+        
+        # Reshape into groups of 4
+        boxes = []
+        for i in range(0, len(layer_boxes), 4):
+            if i + 3 < len(layer_boxes):
+                try:
+                    x1 = float(layer_boxes[i])
+                    y1 = float(layer_boxes[i + 1])
+                    x2 = float(layer_boxes[i + 2])
+                    y2 = float(layer_boxes[i + 3])
+                    boxes.append([x1, y1, x2, y2])
+                except (ValueError, TypeError, IndexError) as e:
+                    print(f"[WARN] Failed to parse flattened box at index {i}: {e}", flush=True)
+                    continue
+        layer_boxes = boxes
+    
+    # Now process each box
     for layer_box in layer_boxes:
         # Handle None
         if layer_box is None:
@@ -208,7 +239,7 @@ def get_input_box(layer_boxes):
                 list_layer_box.append(None)
                 continue
         else:
-            # Skip unsupported types (float, int, etc.)
+            # Skip unsupported types
             print(f"[WARN] Unsupported layer_box type: {type(layer_box)}, value: {layer_box}, skipping", flush=True)
             list_layer_box.append(None)
             continue
