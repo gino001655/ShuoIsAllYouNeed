@@ -377,11 +377,6 @@ def inference_layout(config):
             height = int(get_batch_value(batch, "height"))
             width = int(get_batch_value(batch, "width"))
             adapter_img = get_batch_value(batch, "whole_img")
-
-            # Force dimensions to be multiples of 16
-            # This matches training logic and prevents VAE mismatch (e.g. 1080 -> 1072 vs 1080 -> 1088)
-            height = ((height + 15) // 16) * 16
-            width = ((width + 15) // 16) * 16
             
             # Ensure adapter_image is RGB (3 channels) for VAE encoding
             if hasattr(adapter_img, "convert"):
@@ -473,30 +468,43 @@ def inference_layout(config):
         os.makedirs(case_dir, exist_ok=True)
         
         # Save whole image_RGBA (X_hat[0]) and background_RGBA (X_hat[1])
-        whole_image_layer = (x_hat[0].permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
+        # x_hat shape is (batch, channels, num_layers, height, width)
+        # We need to access layers from dimension 2, not dimension 0
+        print(f"[DEBUG] x_hat shape: {x_hat.shape}, image type: {type(image)}", flush=True)
+        
+        # Extract batch 0 and transpose to (num_layers, channels, height, width)
+        x_hat_layers = x_hat[0]  # Remove batch dimension -> (channels, num_layers, height, width)
+        x_hat_layers = x_hat_layers.permute(1, 0, 2, 3)  # -> (num_layers, channels, height, width)
+        
+        if x_hat_layers.shape[0] < 2:
+            print(f"[WARN] x_hat only has {x_hat_layers.shape[0]} layer(s), expected at least 2. Skipping this sample.", flush=True)
+            idx += 1
+            continue
+            
+        whole_image_layer = (x_hat_layers[0].permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
         whole_image_rgba_image = Image.fromarray(whole_image_layer, "RGBA")
         whole_image_rgba_image.save(os.path.join(case_dir, "whole_image_rgba.png"))
 
         adapter_img.save(os.path.join(case_dir, "origin.png"))
 
-        background_layer = (x_hat[1].permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
+        background_layer = (x_hat_layers[1].permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
         background_rgba_image = Image.fromarray(background_layer, "RGBA")
         background_rgba_image.save(os.path.join(case_dir, "background_rgba.png"))
 
-        x_hat = x_hat[2:]
-        merged_image = image[1]
-        image = image[2:]
+        x_hat_layers = x_hat_layers[2:]
+        merged_image = image[1] if isinstance(image, list) else image[0]
+        image_layers = image[2:] if isinstance(image, list) else []
 
         # Save transparent VAE decoded results
-        for layer_idx in range(x_hat.shape[0]):
-            layer = x_hat[layer_idx]
+        for layer_idx in range(x_hat_layers.shape[0]):
+            layer = x_hat_layers[layer_idx]
             rgba_layer = (layer.permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
             rgba_image = Image.fromarray(rgba_layer, "RGBA")
             rgba_image.save(os.path.join(case_dir, f"layer_{layer_idx}_rgba.png"))
 
         # Composite background and foreground layers
-        for layer_idx in range(x_hat.shape[0]):
-            rgba_layer = (x_hat[layer_idx].permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
+        for layer_idx in range(x_hat_layers.shape[0]):
+            rgba_layer = (x_hat_layers[layer_idx].permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
             layer_image = Image.fromarray(rgba_layer, "RGBA")
             merged_image = Image.alpha_composite(merged_image.convert('RGBA'), layer_image)
         
