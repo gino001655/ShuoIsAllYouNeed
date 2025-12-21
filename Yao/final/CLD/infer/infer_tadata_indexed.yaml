@@ -5,10 +5,10 @@ seed: 42
 max_layer_num: 52
 num_inference_steps: 28  # 推論步數（必須）
 
-# ⭐ 方案 B 配置：使用 TAData + caption.json
-use_indexed_dataset: true  # Inference 使用 indexed dataset（推薦）
+# ⭐ 使用標準 DLCVLayoutDataset（與 Training 一致）
+use_indexed_dataset: false  # 使用標準 dataset
 data_dir: "/workspace/dataset/DLCV_dataset"  # TAData 目錄
-caption_json: "/workspace/ShuoIsAllYouNeed/Yao/final/CLD/caption_llava16_final.json"  # LLaVA captions
+caption_mapping: "/workspace/ShuoIsAllYouNeed/Yao/final/CLD/caption_llava16_final.json"  # LLaVA captions
 
 # Debug 設定
 enable_dataset_debug: true  # 顯示每個樣本的詳細資訊

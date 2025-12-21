@@ -329,27 +329,29 @@ def inference_layout(config):
         loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0, collate_fn=indexed_collate_fn)
         print(f"[INFO] ✓ 載入 {len(dataset) if not isinstance(dataset, Subset) else len(dataset.indices)} 個推理樣本", flush=True)
     else:
-        # 方案 A 或原始方案：嘗試載入 dataset，如果 custom_dataset 失敗則 fallback 到原始 dataset
-        if _use_custom_dataset:
-            try:
-                dataset = CustomLayoutTrainDataset(config['data_dir'], split="test")
-                collate_fn = custom_collate_fn
-                print("[INFO] 成功使用自訂資料集 (custom_dataset.py)", flush=True)
-            except (FileNotFoundError, ValueError) as e:
-                print(f"[WARNING] 自訂資料集載入失敗: {e}", flush=True)
-                print("[INFO] 切換到原始資料集 (dataset.py)", flush=True)
-                from tools.dataset import LayoutTrainDataset, collate_fn
-                dataset = LayoutTrainDataset(config['data_dir'], split="test")
-        else:
-            from tools.dataset import LayoutTrainDataset, collate_fn
-            dataset = LayoutTrainDataset(config['data_dir'], split="test")
+        # 使用標準 DLCVLayoutDataset（與 Training 一致）
+        print(f"[INFO] 使用 DLCVLayoutDataset（DLCV 格式，與 Training 一致）", flush=True)
+        print(f"[INFO] Data dir: {config['data_dir']}", flush=True)
+        print(f"[INFO] Caption mapping: {config.get('caption_mapping', 'Not specified')}", flush=True)
+        
+        from tools.dlcv_dataset import DLCVLayoutDataset, collate_fn as dlcv_collate_fn
+        
+        if enable_dataset_debug:
+            print(f"[INFO] 🔍 Dataset debug enabled: 將顯示前幾個樣本的詳細資訊", flush=True)
+        
+        dataset = DLCVLayoutDataset(
+            data_dir=config['data_dir'],
+            split="train",  # 使用 train split（包含所有數據）
+            caption_mapping_path=config.get('caption_mapping', None),
+            enable_debug=enable_dataset_debug
+        )
         
         # 限制樣本數量（如果指定）
         if max_samples is not None and max_samples > 0:
             print(f"[INFO] 限制樣本數量: {max_samples}", flush=True)
             dataset = Subset(dataset, list(range(min(max_samples, len(dataset)))))
         
-        loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0, collate_fn=collate_fn)
+        loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0, collate_fn=dlcv_collate_fn)
         print(f"[INFO] ✓ 載入 {len(dataset) if not isinstance(dataset, Subset) else len(dataset.indices)} 個推理樣本", flush=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -444,6 +446,7 @@ def inference_layout(config):
             print(f"[DEBUG] Adapter Img Size: {adapter_img.size}, Target (W,H): ({width}, {height})", flush=True)
         
         print(f"[DEBUG] Calling pipeline with height={height}, width={width}", flush=True)
+        print(f"[DEBUG] transp_vae is None: {transp_vae is None}, num_layers: {len(layer_boxes)}", flush=True)
 
         # Generate layers using pipeline
         x_hat, image, latents = pipeline(
