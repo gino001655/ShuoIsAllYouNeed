@@ -237,3 +237,4 @@ if __name__ == '__main__':
     
     success = validate_config(args.config_path)
     sys.exit(0 if success else 1)
+

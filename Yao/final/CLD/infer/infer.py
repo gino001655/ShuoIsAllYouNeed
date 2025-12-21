@@ -1,4 +1,5 @@
 import os
+import sys
 # Set CUDA_VISIBLE_DEVICES before importing torch
 # You can modify this or set it via environment variable
 if "CUDA_VISIBLE_DEVICES" not in os.environ:
@@ -159,20 +160,66 @@ def get_input_box(layer_boxes):
     """
     Convert layer boxes to quantized format (aligned to 16-pixel boundaries).
     Uses correct ceiling division: ((val + 15) // 16) * 16
+    
+    Args:
+        layer_boxes: List of boxes, each box can be:
+            - [x1, y1, x2, y2] (list/tuple of 4 numbers)
+            - dict with 'left', 'top', 'width', 'height' keys
+            - None (invalid box)
+            - Other types (will be skipped)
     """
     list_layer_box = []
     for layer_box in layer_boxes:
-        if layer_box is None or len(layer_box) < 4:
+        # Handle None
+        if layer_box is None:
             list_layer_box.append(None)
             continue
-        min_row, max_row = layer_box[1], layer_box[3]
-        min_col, max_col = layer_box[0], layer_box[2]
+        
+        # Handle dict format (from indexed dataset with left/top/width/height)
+        if isinstance(layer_box, dict):
+            try:
+                left = float(layer_box.get('left', 0))
+                top = float(layer_box.get('top', 0))
+                width = float(layer_box.get('width', 0))
+                height = float(layer_box.get('height', 0))
+                # Convert to [x1, y1, x2, y2] format
+                x1, y1 = left, top
+                x2, y2 = left + width, top + height
+                layer_box = [x1, y1, x2, y2]
+            except (ValueError, TypeError, KeyError) as e:
+                print(f"[WARN] Invalid dict layer_box: {layer_box}, error: {e}", flush=True)
+                list_layer_box.append(None)
+                continue
+        
+        # Handle list/tuple format [x1, y1, x2, y2]
+        if isinstance(layer_box, (list, tuple)):
+            try:
+                # Check if we have at least 4 elements
+                if len(layer_box) < 4:
+                    list_layer_box.append(None)
+                    continue
+                # Convert to float and extract coordinates
+                min_col = float(layer_box[0])
+                min_row = float(layer_box[1])
+                max_col = float(layer_box[2])
+                max_row = float(layer_box[3])
+            except (ValueError, TypeError, IndexError) as e:
+                print(f"[WARN] Invalid list layer_box: {layer_box}, error: {e}", flush=True)
+                list_layer_box.append(None)
+                continue
+        else:
+            # Skip unsupported types (float, int, etc.)
+            print(f"[WARN] Unsupported layer_box type: {type(layer_box)}, value: {layer_box}, skipping", flush=True)
+            list_layer_box.append(None)
+            continue
+        
+        # Quantize coordinates to 16-pixel boundaries
         # Downward quantization (floor to 16)
-        quantized_min_row = (min_row // 16) * 16
-        quantized_min_col = (min_col // 16) * 16
+        quantized_min_row = int(min_row // 16) * 16
+        quantized_min_col = int(min_col // 16) * 16
         # Upward quantization (ceiling to 16) - correct way
-        quantized_max_row = ((max_row + 15) // 16) * 16
-        quantized_max_col = ((max_col + 15) // 16) * 16
+        quantized_max_row = int((max_row + 15) // 16) * 16
+        quantized_max_col = int((max_col + 15) // 16) * 16
         
         # Ensure valid box after quantization
         if quantized_max_col <= quantized_min_col or quantized_max_row <= quantized_min_row:

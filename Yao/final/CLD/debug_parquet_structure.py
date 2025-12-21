@@ -136,3 +136,4 @@ if 'image' in sample:
             print("✓ Layer images are stored as Image objects")
             print("💡 Should work directly")
 
+
