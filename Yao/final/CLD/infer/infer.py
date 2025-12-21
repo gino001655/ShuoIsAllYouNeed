@@ -364,6 +364,22 @@ def inference_layout(config):
         if key not in batch_dict:
             raise KeyError(f"Batch does not contain key '{key}'. Available keys: {list(batch_dict.keys())}")
         value = batch_dict[key]
+        
+        # Special handling for layout which is a list of boxes
+        if key == "layout" and isinstance(value, (list, tuple)) and len(value) > 0:
+            first_item = value[0]
+            # Check if value is a Layout (list of boxes) or Batch (list of layouts)
+            
+            # Case 1: value = [box1, box2] -> box1 = [x,y,w,h] (list of numbers)
+            if isinstance(first_item, (list, tuple)) and len(first_item) > 0 and isinstance(first_item[0], (int, float)):
+                # value is a Layout (list of boxes). Do NOT unwrap.
+                return value
+            
+            # Case 2: value = [number, number...] (Flattened layout)
+            if isinstance(first_item, (int, float)):
+                # value is a Flattened Layout. Do NOT unwrap.
+                return value
+                
         # If value is a list/tuple with elements, return first element
         if isinstance(value, (list, tuple)) and len(value) > 0:
             return value[0]
