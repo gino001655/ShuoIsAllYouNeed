@@ -3,6 +3,7 @@
 
 seed: 42
 max_layer_num: 52
+num_inference_steps: 28  # 推論步數（必須）
 
 # ⭐ 方案 B 配置：使用 TAData + caption.json
 use_indexed_dataset: true  # Inference 使用 indexed dataset（推薦）
@@ -11,7 +12,7 @@ caption_json: "/workspace/ShuoIsAllYouNeed/Yao/final/CLD/caption_llava16_final.j
 
 # Debug 設定
 enable_dataset_debug: true  # 顯示每個樣本的詳細資訊
-max_samples: null  # 限制樣本數量（null = 處理全部，或設為數字如 10）
+max_samples: 5  # 先測試 5 個樣本（避免跑太久）
 
 # 模型路徑（基礎模型，和 training 一樣）
 pretrained_model_name_or_path: "flux_model"
@@ -30,7 +31,9 @@ lora_ckpt: "FT_on_TAData_ckpt/checkpoint_000200/transformer"  # Transformer LoRA
 adapter_lora_dir: "FT_on_TAData_ckpt/checkpoint_000200/adapter"  # Adapter LoRA checkpoint
 
 # Inference 參數
+num_inference_steps: 28  # 推論步數
 cfg: 4.0  # Guidance scale（和 training 一樣）
+adapter_scale: 0.9  # Adapter 強度（必須）
 max_layers: 48  # VAE 最大層數（用於 transparent VAE）
 decoder_arch: "vit"  # VAE decoder 架構
 pos_embedding: "rope"  # 位置編碼
