@@ -70,6 +70,15 @@ def main():
 
     print(f"[INFO] Found {len(case_dirs)} inference cases to evaluate.")
     
+    print(f"[INFO] Found {len(case_dirs)} inference cases to evaluate.")
+    
+    # Aggregators for categories
+    categories = {
+        "Whole": {"clip": [], "mse": []},
+        "Background": {"clip": [], "mse": []},
+        "Layer": {"clip": [], "mse": []}
+    }
+    
     total_score = 0.0
     total_layers_count = 0
     case_scores = {}
@@ -171,6 +180,11 @@ def main():
             
             mse = np.mean((gt_np - pred_np) ** 2)
             
+            # Categorize
+            cat_key = "Whole" if k == 0 else "Background" if k == 1 else "Layer"
+            categories[cat_key]["clip"].append(similarity)
+            categories[cat_key]["mse"].append(mse)
+            
             layer_name = "Whole" if k == 0 else "Background" if k == 1 else f"Layer {k-2}"
             
             layer_scores.append({
@@ -200,16 +214,33 @@ def main():
         macro_avg_clip = sum(c["clip"] for c in case_scores.values()) / len(case_scores)
         macro_avg_mse = sum(c["mse"] for c in case_scores.values()) / len(case_scores)
         
-        # Micro is average over all layers
-        # Since I didn't verify total MSE accumulation, let's recalculate accurately if needed.
-        # But for CLIP I kept total_score.
+        micro_avg_clip = total_score / total_layers_count
+        # Recalculate micro MSE
+        all_mses = categories["Whole"]["mse"] + categories["Background"]["mse"] + categories["Layer"]["mse"]
+        micro_avg_mse = sum(all_mses) / len(all_mses) if all_mses else 0.0
         
-        print("\n" + "="*40)
+        print("\n" + "="*50)
         print(f"EVALUATION RESULTS ({len(case_scores)} cases)")
-        print("="*40)
-        print(f"Macro Avg CLIP: {macro_avg_clip:.4f}")
-        print(f"Macro Avg MSE : {macro_avg_mse:.4f}")
-        print("="*40)
+        print("="*50)
+        print(f"{'Metric':<15} {'CLIP (Higher is Better)':<25} {'MSE (Lower is Better)':<25}")
+        print("-" * 65)
+        print(f"{'Overall (Micro)':<15} {micro_avg_clip:.4f}{'':<19} {micro_avg_mse:.4f}")
+        print(f"{'Overall (Macro)':<15} {macro_avg_clip:.4f}{'':<19} {macro_avg_mse:.4f}")
+        print("-" * 65)
+        
+        # Print Categorized Results
+        for cat in ["Whole", "Background", "Layer"]:
+            n = len(categories[cat]["clip"])
+            if n > 0:
+                avg_c = sum(categories[cat]["clip"]) / n
+                avg_m = sum(categories[cat]["mse"]) / n
+                print(f"{cat:<15} {avg_c:.4f} (n={n:<5}){'':<10} {avg_m:.4f}")
+            else:
+                print(f"{cat:<15} N/A")
+                
+        print("="*50)
+    else:
+        print("[WARN] No layers evaluated.")
 
 if __name__ == "__main__":
     main()
