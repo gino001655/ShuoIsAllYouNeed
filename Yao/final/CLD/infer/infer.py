@@ -377,6 +377,11 @@ def inference_layout(config):
             height = int(get_batch_value(batch, "height"))
             width = int(get_batch_value(batch, "width"))
             adapter_img = get_batch_value(batch, "whole_img")
+            
+            # Ensure adapter_image is RGB (3 channels) for VAE encoding
+            if hasattr(adapter_img, "convert"):
+                adapter_img = adapter_img.convert("RGB")
+            
             caption = get_batch_value(batch, "caption")
             layout = get_batch_value(batch, "layout")
         except (KeyError, TypeError, ValueError) as e:
