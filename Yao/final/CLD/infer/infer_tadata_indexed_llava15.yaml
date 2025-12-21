@@ -8,11 +8,11 @@ num_inference_steps: 28  # 推論步數（必須）
 # ⭐ 使用標準 DLCVLayoutDataset（與 Training 一致）
 use_indexed_dataset: false  # 使用標準 dataset
 data_dir: "/workspace/dataset/DLCV_dataset"  # TAData 目錄
-caption_mapping: "/workspace/ShuoIsAllYouNeed/Yao/final/CLD/caption_llava16_final.json"  # LLaVA captions
+caption_mapping: "/workspace/ShuoIsAllYouNeed/Yao/final/CLD/caption_formal.json"  # LLaVA captions
 
 # Debug 設定
 enable_dataset_debug: true  # 顯示每個樣本的詳細資訊
-max_samples: 5  # 先測試 5 個樣本（避免跑太久）
+max_samples: 100  # 先測試 5 個樣本（避免跑太久）
 
 # 模型路徑（基礎模型，和 training 一樣）
 pretrained_model_name_or_path: "flux_model"
@@ -26,9 +26,9 @@ artplus_lora_dir: "/workspace/ShuoIsAllYouNeed/Yao/final/CLD/ckpt/prism_ft_LoRA"
 # ⭐ 訓練好的 Checkpoint 路徑（從 training 的 output_dir 中選擇）
 # 例如：如果 training 保存到 "FT_on_TAData_ckpt/checkpoint_00200"
 # 則設置為：
-layer_ckpt: "FT_on_TAData_ckpt/checkpoint_000200"  # Checkpoint 根目錄（用於載入 layer_pe.pth）
-lora_ckpt: "FT_on_TAData_ckpt/checkpoint_000200/transformer"  # Transformer LoRA checkpoint
-adapter_lora_dir: "FT_on_TAData_ckpt/checkpoint_000200/adapter"  # Adapter LoRA checkpoint
+layer_ckpt: "FT_on_TAData_ckpt_llava15/checkpoint_010000"  # Checkpoint 根目錄（用於載入 layer_pe.pth）
+lora_ckpt: "FT_on_TAData_ckpt_llava15/checkpoint_010000/transformer"  # Transformer LoRA checkpoint
+adapter_lora_dir: "FT_on_TAData_ckpt_llava15/checkpoint_010000/adapter"  # Adapter LoRA checkpoint
 
 # Inference 參數
 num_inference_steps: 28  # 推論步數
@@ -40,5 +40,5 @@ pos_embedding: "rope"  # 位置編碼
 layer_embedding: "rope"  # Layer 編碼
 
 # 輸出目錄
-save_dir: "inference_output"
+save_dir: "inference_output_llava15_bad"
 
