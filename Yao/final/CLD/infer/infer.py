@@ -381,6 +381,10 @@ def inference_layout(config):
             # Ensure adapter_image is RGB (3 channels) for VAE encoding
             if hasattr(adapter_img, "convert"):
                 adapter_img = adapter_img.convert("RGB")
+                # Also ensure it matches the batch width/height exactly
+                if adapter_img.size != (width, height):
+                    print(f"[INFO] Resizing image from {adapter_img.size} to ({width}, {height}) for dimension alignment.", flush=True)
+                    adapter_img = adapter_img.resize((width, height), Image.LANCZOS)
             
             caption = get_batch_value(batch, "caption")
             layout = get_batch_value(batch, "layout")
