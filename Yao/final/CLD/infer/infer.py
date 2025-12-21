@@ -377,6 +377,11 @@ def inference_layout(config):
             height = int(get_batch_value(batch, "height"))
             width = int(get_batch_value(batch, "width"))
             adapter_img = get_batch_value(batch, "whole_img")
+
+            # Force dimensions to be multiples of 16
+            # This matches training logic and prevents VAE mismatch (e.g. 1080 -> 1072 vs 1080 -> 1088)
+            height = ((height + 15) // 16) * 16
+            width = ((width + 15) // 16) * 16
             
             # Ensure adapter_image is RGB (3 channels) for VAE encoding
             if hasattr(adapter_img, "convert"):
@@ -439,6 +444,9 @@ def inference_layout(config):
                 f"[WARN] Sample {idx}: Filtered invalid boxes: {len(raw_layer_boxes)} -> {len(layer_boxes)}",
                 flush=True,
             )
+
+        if hasattr(adapter_img, "size"):
+            print(f"[DEBUG] Adapter Img Size: {adapter_img.size}, Target (W,H): ({width}, {height})", flush=True)
 
         # Generate layers using pipeline
         x_hat, image, latents = pipeline(
