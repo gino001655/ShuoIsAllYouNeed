@@ -773,7 +773,7 @@ class CustomFluxPipelineCfgLayer(CustomFluxPipeline):
                     xm.mark_step()
 
         # create a grey latent
-        bs, n_frames, channel_latent, height, width = latents.shape
+        bs, num_layers, channel_latent, height, width = latents.shape
 
         def encode_in_chunks(vae, images, chunk=8):
             parts = []
@@ -784,11 +784,11 @@ class CustomFluxPipelineCfgLayer(CustomFluxPipeline):
                 torch.cuda.empty_cache()
             return torch.cat(parts, dim=0)
 
-        pixel_grey = torch.zeros(size=(bs*n_frames, 3, height*8, width*8), device=latents.device, dtype=latents.dtype)
+        pixel_grey = torch.zeros(size=(bs*num_layers, 3, height*8, width*8), device=latents.device, dtype=latents.dtype)
         # latent_grey = self.vae.encode(pixel_grey).latent_dist.sample()
         latent_grey = encode_in_chunks(self.vae, pixel_grey, chunk=16)
         latent_grey = (latent_grey - self.vae.config.shift_factor) * self.vae.config.scaling_factor
-        latent_grey = latent_grey.view(bs, n_frames, channel_latent, height, width)  # [bs, f, c_latent, h, w]
+        latent_grey = latent_grey.view(bs, num_layers, channel_latent, height, width)  # [bs, num_layers, c_latent, h, w]
         
         # fill in the latents
         for layer_idx in range(latent_grey.shape[1]):
@@ -805,7 +805,7 @@ class CustomFluxPipelineCfgLayer(CustomFluxPipeline):
         else:
             latents = (latents / self.vae.config.scaling_factor) + self.vae.config.shift_factor
             bs, num_layers, c, h, w = latents.shape
-            latents = latents.reshape(bs * n_frames, channel_latent, height, width)
+            latents = latents.reshape(bs * num_layers, c, h, w)
             latents_segs = torch.split(latents, 8, dim=0)
             image_segs = [self.vae.decode(latents_seg, return_dict=False)[0] for latents_seg in latents_segs]
             image = torch.cat(image_segs, dim=0)
