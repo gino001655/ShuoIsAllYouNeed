@@ -470,13 +470,24 @@ def inference_layout(config):
         os.makedirs(case_dir, exist_ok=True)
         
         # Save whole image_RGBA (X_hat[0]) and background_RGBA (X_hat[1])
-        # x_hat shape is (batch, channels, num_layers, height, width)
-        # We need to access layers from dimension 2, not dimension 0
+        # x_hat shape can be:
+        # - (batch, channels, num_layers, height, width) - standard multi-layer output
+        # - (batch, channels, height, width) - single layer or no transp_vae
         print(f"[DEBUG] x_hat shape: {x_hat.shape}, image type: {type(image)}", flush=True)
         
-        # Extract batch 0 and transpose to (num_layers, channels, height, width)
-        x_hat_layers = x_hat[0]  # Remove batch dimension -> (channels, num_layers, height, width)
-        x_hat_layers = x_hat_layers.permute(1, 0, 2, 3)  # -> (num_layers, channels, height, width)
+        # Handle different tensor shapes
+        if len(x_hat.shape) == 5:
+            # Standard case: (batch, channels, num_layers, height, width)
+            x_hat_layers = x_hat[0]  # Remove batch dimension -> (channels, num_layers, height, width)
+            x_hat_layers = x_hat_layers.permute(1, 0, 2, 3)  # -> (num_layers, channels, height, width)
+        elif len(x_hat.shape) == 4:
+            # Single layer case: (batch, channels, height, width)
+            # Treat as single layer
+            x_hat_layers = x_hat[0].unsqueeze(0)  # -> (1, channels, height, width)
+        else:
+            print(f"[ERROR] Unexpected x_hat shape: {x_hat.shape}", flush=True)
+            idx += 1
+            continue
         
         if x_hat_layers.shape[0] < 2:
             print(f"[WARN] x_hat only has {x_hat_layers.shape[0]} layer(s), expected at least 2. Skipping this sample.", flush=True)
@@ -494,27 +505,61 @@ def inference_layout(config):
         background_rgba_image.save(os.path.join(case_dir, "background_rgba.png"))
 
         x_hat_layers = x_hat_layers[2:]
-        merged_image = image[1] if isinstance(image, list) else image[0]
-        image_layers = image[2:] if isinstance(image, list) else []
+        
+        # Safely extract merged_image from image list
+        try:
+            if isinstance(image, list) and len(image) > 1:
+                merged_image = image[1]
+            elif isinstance(image, list) and len(image) > 0:
+                merged_image = image[0]
+            else:
+                # image is a single PIL Image
+                merged_image = image
+            
+            # Ensure merged_image is PIL Image
+            if not isinstance(merged_image, Image.Image):
+                print(f"[WARN] merged_image is not PIL Image, converting from tensor", flush=True)
+                if hasattr(merged_image, 'cpu'):
+                    merged_image = (merged_image.permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
+                    merged_image = Image.fromarray(merged_image, "RGB")
+        except Exception as e:
+            print(f"[ERROR] Failed to extract merged_image: {e}", flush=True)
+            idx += 1
+            continue
+        
+        image_layers = image[2:] if isinstance(image, list) and len(image) > 2 else []
 
         # Save transparent VAE decoded results
         for layer_idx in range(x_hat_layers.shape[0]):
-            layer = x_hat_layers[layer_idx]
-            rgba_layer = (layer.permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
-            rgba_image = Image.fromarray(rgba_layer, "RGBA")
-            rgba_image.save(os.path.join(case_dir, f"layer_{layer_idx}_rgba.png"))
+            try:
+                layer = x_hat_layers[layer_idx]
+                rgba_layer = (layer.permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
+                rgba_layer = np.clip(rgba_layer, 0, 255).astype(np.uint8)
+                rgba_image = Image.fromarray(rgba_layer, "RGBA")
+                rgba_image.save(os.path.join(case_dir, f"layer_{layer_idx}_rgba.png"))
+            except Exception as e:
+                print(f"[WARN] Failed to save layer {layer_idx}: {e}", flush=True)
+                continue
 
         # Composite background and foreground layers
         for layer_idx in range(x_hat_layers.shape[0]):
-            rgba_layer = (x_hat_layers[layer_idx].permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
-            layer_image = Image.fromarray(rgba_layer, "RGBA")
-            merged_image = Image.alpha_composite(merged_image.convert('RGBA'), layer_image)
+            try:
+                rgba_layer = (x_hat_layers[layer_idx].permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
+                rgba_layer = np.clip(rgba_layer, 0, 255).astype(np.uint8)
+                layer_image = Image.fromarray(rgba_layer, "RGBA")
+                merged_image = Image.alpha_composite(merged_image.convert('RGBA'), layer_image)
+            except Exception as e:
+                print(f"[WARN] Failed to composite layer {layer_idx}: {e}", flush=True)
+                continue
         
         # Save final composite images
-        merged_image.convert('RGB').save(os.path.join(config['save_dir'], "merged", f"{this_index}.png"))
-        merged_image.convert('RGB').save(os.path.join(case_dir, f"{this_index}.png"))
-        # Save final composite RGBA image
-        merged_image.save(os.path.join(config['save_dir'], "merged_rgba", f"{this_index}.png"))
+        try:
+            merged_image.convert('RGB').save(os.path.join(config['save_dir'], "merged", f"{this_index}.png"))
+            merged_image.convert('RGB').save(os.path.join(case_dir, f"{this_index}.png"))
+            # Save final composite RGBA image
+            merged_image.save(os.path.join(config['save_dir'], "merged_rgba", f"{this_index}.png"))
+        except Exception as e:
+            print(f"[WARN] Failed to save final images: {e}", flush=True)
 
         print(f"Saved case {idx} to {case_dir}")
         idx += 1
